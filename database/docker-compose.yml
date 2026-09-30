@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: baxter-db
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - baxter_db_data:/var/lib/postgresql/data
+
+    restart: unless-stopped
+
+volumes:
+  baxter_db_data:

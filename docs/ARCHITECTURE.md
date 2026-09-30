@@ -40,3 +40,54 @@ TC3008AVJW/
 * SpiderFoot: Interacción via API/CLI para recolección automatizada amplia.
 * Shodan: Consultas via API REST para identificar puertos y servicios expuestos.
 
+### D. Motor de Procesamiento, Correlación y Riesgo
+* Tecnologías: Python
+#### Responsabilidades
+* Normalización: Estandarizar la estructura de los datos sin importar de cuál fuente OSINT provinieron.
+* Deduplicación: Consolidar múltiples registros sobre la misma entidad en un único activo con trazabilidad de sus orígenes.
+* Correlación: Mapear la relación jerárquica entre dominios, subdominios, IPs, certificados y correos.
+* Cálculo de Risk Score: Calcular la puntuación de 0 a 100 utilizando reglas de negocio trazables y deterministas.
+
+### E. Base de Datos
+* Tecnologías: PostgreSQL
+* Guardar los registros de datos crudos recolectados para auditoría y trazabilidad.
+* Almacenar el inventario normalizado de activos `Assets`, hallazgos `Findings`, métricas y evaluaciones `Scores`.
+
+### F. Capa de Inteligencia Artificial
+* Tecnologías: Integración con modelos de lenguaje `Gemini`
+* Explicar de manera clara en lenguaje natural las razones detrás del incremento o nivel de riesgo.
+* Sugerir prioridades de remediación y apoyar en la generación de reportes ejecutivos para los analistas.
+
+## 4. Flujo de Datos del Sistema
+```text
+[Usuario / Dashboard]
+       │  
+       │  1. Ingresa Dominio 
+       ▼
+[FastAPI Backend] 
+       │
+       │  2. Invocación de Análisis
+       ▼
+[Orquestador OSINT] ──► Ejecuta colectores en paralelo crt.sh, theHarvester, SpiderFoot, Shodan
+       │
+       │  3. Devuelve resultados crudos
+       ▼
+[Procesamiento & Correlación] 
+       ├─► Normalización & Deduplicación
+       ├─► Generación de Activos y Hallazgos
+       └─► Cálculo determinista de Risk Score (0-100)
+       │
+       │  4. Guarda Activos, Hallazgos e Histórico
+       ▼
+[PostgreSQL Database]
+       │
+       │  5. Envía resumen de hallazgos para interpretación
+       ▼
+IA / LLM (BaxterSec AI Insights) ──► Genera explicaciones y recomendaciones
+       │
+       │  6. Devuelve respuesta enriquecida
+       ▼
+[FastAPI Backend] ──► 7. Respuesta consolidada  ──► React Dashboard
+```
+
+

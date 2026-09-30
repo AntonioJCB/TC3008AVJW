@@ -90,4 +90,4 @@ IA / LLM (BaxterSec AI Insights) ──► Genera explicaciones y recomendacione
 [FastAPI Backend] ──► 7. Respuesta consolidada  ──► React Dashboard
 ```
 
-
+## 5. Text Stack

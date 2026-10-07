@@ -1,0 +1,32 @@
+{
+    "company_name": "Innovatech Solutions Ltd.",
+    "target_domain": "innovatech-demo.com",
+    "ground_truth": {
+      "assets": {
+        "subdomains": [
+          "api.innovatech-demo.com",
+          "dev.innovatech-demo.com",
+          "mail.innovatech-demo.com"
+        ],
+        "emails": [
+          "admin@innovatech-demo.com",
+          "soporte@innovatech-demo.com"
+        ],
+        "ips": ["192.0.2.10", "192.0.2.11"],
+        "open_ports": [22, 80, 443, 5432]
+      },
+      "findings": [
+        {
+          "severity": "CRITICAL",
+          "title": "Puerto SSH y Base de datos expuestos en servidor DEV",
+          "target": "dev.innovatech-demo.com"
+        },
+        {
+          "severity": "MEDIUM",
+          "title": "Ausencia de registros SPF y DMARC",
+          "target": "innovatech-demo.com"
+        }
+      ],
+      "expected_risk_score": 75
+    }
+  }

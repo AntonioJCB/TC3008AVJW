@@ -1,7 +1,4 @@
-import { useState } from 'react';
-
-const DEMO_USER = 'equipo@baxtersec.com';
-const DEMO_PASSWORD = 'KirbyPrint2026!';
+import { useEffect, useState } from 'react';
 
 function Brand({ className = '' }) {
   return (
@@ -17,12 +14,17 @@ function Login({ onLogin }) {
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
 
-    // Prototipo visual: sustituir por autenticación del backend antes de producción.
-    if (email.trim().toLowerCase() !== DEMO_USER || password !== DEMO_PASSWORD) return;
-    onLogin(email.trim(), remember);
+    const result = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim(), password, remember }),
+    });
+    if (!result.ok) return;
+    const session = await result.json();
+    onLogin(session.email);
   }
 
   return (
@@ -106,14 +108,40 @@ function Home({ email, onLogout }) {
 
 export default function App() {
   const [session, setSession] = useState(null);
+  const [path, setPath] = useState(window.location.pathname);
+  const [ready, setReady] = useState(path !== '/home');
 
-  function handleLogin(email, remember) {
-    setSession({ email, remember });
+  useEffect(() => {
+    const handlePopState = () => setPath(window.location.pathname);
+    window.addEventListener('popstate', handlePopState);
+    if (window.location.pathname === '/home') {
+      fetch('/api/auth/session')
+        .then(async (result) => {
+          if (!result.ok) throw new Error('No active session');
+          setSession(await result.json());
+        })
+        .catch(() => {
+          window.history.replaceState({}, '', '/');
+          setPath('/');
+        })
+        .finally(() => setReady(true));
+    }
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  function handleLogin(email) {
+    setSession({ email });
+    window.history.pushState({}, '', '/home');
+    setPath('/home');
+    setReady(true);
     document.title = 'BaxterSec · Home';
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
     setSession(null);
+    window.history.pushState({}, '', '/');
+    setPath('/');
     document.title = 'BaxterSec · Acceso';
   }
 
@@ -124,7 +152,7 @@ export default function App() {
         <div className="secure-label"><span aria-hidden="true" />Entorno protegido</div>
       </header>
       <div className="page-content">
-        {session
+        {!ready ? null : path === '/home' && session
           ? <Home email={session.email} onLogout={handleLogout} />
           : <Login onLogin={handleLogin} />}
       </div>

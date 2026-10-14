@@ -13,18 +13,31 @@ function Login({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
+  const [error, setError] = useState('');
 
   async function handleSubmit(event) {
     event.preventDefault();
+    setError('');
 
-    const result = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.trim(), password, remember }),
-    });
-    if (!result.ok) return;
-    const session = await result.json();
-    onLogin(session.email);
+    try {
+      const result = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password, remember }),
+      });
+      if (result.status === 401) {
+        setError('Usuario o contraseña inválidos.');
+        return;
+      }
+      if (!result.ok) {
+        setError('No se pudo validar el acceso. Intenta de nuevo.');
+        return;
+      }
+      const session = await result.json();
+      onLogin(session.email);
+    } catch {
+      setError('No se pudo validar el acceso. Intenta de nuevo.');
+    }
   }
 
   return (
@@ -51,7 +64,10 @@ function Login({ onLogin }) {
               autoComplete="username"
               id="email"
               name="email"
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                setError('');
+              }}
               placeholder="nombre@empresa.com"
               type="email"
               value={email}
@@ -64,12 +80,17 @@ function Login({ onLogin }) {
               autoComplete="current-password"
               id="password"
               name="password"
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={(event) => {
+                setPassword(event.target.value);
+                setError('');
+              }}
               placeholder="••••••••••••"
               type="password"
               value={password}
             />
           </label>
+
+          {error && <p className="login-error" role="alert">{error}</p>}
 
           <div className="form-options">
             <label className="remember-option">

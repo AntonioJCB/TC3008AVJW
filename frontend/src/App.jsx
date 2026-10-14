@@ -49,7 +49,6 @@ function Login({ onLogin }) {
           <p>Accede al análisis de exposición y monitoreo de activos de tu organización.</p>
           <div className="accent-line" />
         </div>
-        <div className="story-caption"><strong>Kirby Print</strong> · Seguridad clara, sin ruido.</div>
       </aside>
 
       <section className="form-panel">

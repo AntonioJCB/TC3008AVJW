@@ -1,0 +1,42 @@
+/* Shared shell for every dashboard screen. Theme tokens live in styles.css. */
+.proposal-dashboard { grid-template-columns: 244px minmax(0, 1fr); }
+.proposal-dashboard .dashboard-sidebar { padding: 25px 16px 18px; background: var(--theme-sidebar); border-right: 1px solid var(--line-soft); }
+.proposal-dashboard .dashboard-sidebar .brand { margin: 0 10px 36px; }
+.proposal-dashboard .sidebar-nav { display: block; }
+.proposal-dashboard .sidebar-nav-group { display: grid; gap: 4px; margin-bottom: 23px; }
+.proposal-dashboard .sidebar-group-label { margin: 0 12px 8px; color: var(--meta); font-size: 11px; letter-spacing: .14em; }
+.proposal-dashboard .sidebar-link { min-height: 41px; padding: 10px 12px; border-radius: 8px; color: var(--muted); font-size: 14px; }
+.proposal-dashboard .sidebar-link.active { background: var(--theme-surface-alt); border-color: transparent; color: var(--ink); }
+.proposal-dashboard .sidebar-link.active::before { left: -16px; top: 5px; bottom: 5px; background: var(--teal); }
+.proposal-dashboard .sidebar-bottom { align-items: center; gap: 10px; margin-top: auto; padding: 13px 9px 2px; border: 0; border-top: 1px solid var(--line-soft); border-radius: 0; background: transparent; }
+.demo-avatar { display: grid; flex: none; place-items: center; width: 31px; height: 31px; border-radius: 50%; background: var(--theme-surface-alt); color: var(--ink); font-size: 13px; font-weight: 750; }
+.proposal-dashboard .sidebar-bottom small { color: var(--meta); }
+.proposal-dashboard .dashboard-main { min-width: 0; }
+.proposal-dashboard .dashboard-content { width: min(100%, 1380px); padding: 19px clamp(20px, 3vw, 40px) 50px; }
+.proposal-topbar { min-height: 108px; padding: 24px clamp(20px, 3vw, 40px); background: transparent; border-bottom-color: var(--line-soft); }
+.topbar-eyebrow { color: var(--meta); font-size: 11px; font-weight: 700; letter-spacing: .14em; }
+.proposal-topbar h1 { display: flex; align-items: center; gap: 9px; margin: 7px 0 0; color: var(--ink); font-size: clamp(23px, 2.5vw, 29px); line-height: 1.1; letter-spacing: -.045em; }
+.domain-verified { display: grid; place-items: center; width: 19px; height: 19px; border-radius: 50%; background: color-mix(in srgb, var(--risk-low) 17%, transparent); color: var(--risk-low); font-size: 12px; letter-spacing: 0; }
+.proposal-top-actions { display: flex; align-items: center; gap: 13px; }
+.sample-status { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.sample-status > span { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 8px var(--teal); }
+.new-analysis-button { display: inline-flex; align-items: center; gap: 8px; min-height: 39px; padding: 8px 12px; border: 1px solid var(--bronze); border-radius: 8px; background: color-mix(in srgb, var(--bronze) 10%, var(--theme-surface)); color: var(--ink); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.new-analysis-button svg { color: var(--coral); }
+.new-analysis-button:hover { background: color-mix(in srgb, var(--bronze) 22%, var(--theme-surface)); }
+.proposal-top-actions .return-link { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); }
+.proposal-top-actions .return-link:hover { color: var(--link); border-color: var(--link); }
+.proposal-section-intro { margin: 24px 0; }
+.proposal-section-intro h1 { margin: 9px 0 6px; }
+.proposal-dashboard .content-card { border-color: var(--line-soft); background: var(--theme-surface); box-shadow: 0 12px 28px #0001; }
+.proposal-dashboard .eyebrow { color: var(--bronze); }
+.demo-dialog-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 20px; background: #030d12ba; }
+.demo-dialog { position: relative; width: min(100%, 440px); padding: 30px; border: 1px solid var(--line); border-radius: 14px; background: var(--theme-surface); color: var(--ink); box-shadow: 0 24px 70px #0007; }
+.demo-dialog h2 { margin: 14px 0 7px; }
+.demo-dialog p { color: var(--muted); line-height: 1.55; }
+.dialog-icon { color: var(--teal); }
+.dialog-close { position: absolute; top: 15px; right: 15px; display: grid; place-items: center; width: 30px; height: 30px; border: 0; background: transparent; color: var(--muted); }
+.dialog-confirm { margin-top: 10px; padding: 10px 18px; border: 0; border-radius: 7px; background: var(--teal); color: var(--bg); font-weight: 700; }
+
+@media (max-width: 900px) { .proposal-dashboard { grid-template-columns: 200px minmax(0, 1fr); } .sample-status { display: none; } }
+@media (max-width: 760px) { .proposal-dashboard { display: block; } .proposal-dashboard .dashboard-sidebar { padding: 14px; border-right: 0; border-bottom: 1px solid var(--line-soft); } .proposal-dashboard .dashboard-sidebar .brand { margin: 0 0 12px; } .proposal-dashboard .sidebar-nav { display: flex; gap: 12px; overflow-x: auto; } .proposal-dashboard .sidebar-nav-group { display: flex; align-items: center; flex: none; gap: 4px; margin: 0; } .proposal-dashboard .sidebar-nav-group .sidebar-group-label { display: none; } .proposal-dashboard .sidebar-bottom { display: none; } .proposal-dashboard .sidebar-link.active::before { display: none; } .proposal-topbar { min-height: 78px; padding: 17px 18px; } .proposal-dashboard .dashboard-content { padding: 18px; } }
+@media (max-width: 520px) { .proposal-topbar h1 { font-size: 21px; } .topbar-eyebrow { font-size: 9px; } .new-analysis-button { font-size: 0; width: 37px; padding: 0; justify-content: center; } .new-analysis-button svg { width: 17px; } .proposal-top-actions { gap: 6px; } }

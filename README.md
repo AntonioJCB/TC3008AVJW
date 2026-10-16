@@ -41,10 +41,11 @@ TC3008AVJW/
   Los cambios deben enviarse mediante Pull Request:
   feature/_ → dev → main
   Consulta [CONTRIBUTING.md](CONTRIBUTING.md) para conocer las reglas de colaboración.
-  Estado del proyecto
-  Actualmente se está preparando la estructura inicial del monorepo.
-  Ejecución local
-  Las instrucciones de instalación y ejecución se agregarán cuando estén configurados el frontend, el backend y Docker.
+## Estado del proyecto
+La base ejecutable del backend FastAPI está en [backend/](backend/README.md). El frontend y Docker siguen en desarrollo.
+
+## Ejecución local
+Consulta [backend/README.md](backend/README.md) para instalar y ejecutar la API.
 
 ## Equipo
 

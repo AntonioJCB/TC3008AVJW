@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "baxtersec-backend"
+version = "0.1.0"
+description = "API y procesamiento de datos para BaxterSec"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.120,<1",
+  "pydantic-settings>=2.10,<3",
+  "sqlalchemy>=2.0.45,<3",
+  "psycopg[binary]>=3.2,<4",
+  "uvicorn>=0.35,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.28,<1",
+  "pytest>=8,<10",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

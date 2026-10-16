@@ -1,0 +1,4 @@
+/* Optional visual fields preserve the feature/login composition without authentication. */
+.login-shell .field small { color: var(--muted); font-size: 11px; font-weight: 400; }
+.login-shell .demo-access-row { margin: 4px 0 21px; }
+.login-shell .demo-access-row span:last-child { color: var(--bronze); font-size: 10px; font-weight: 750; letter-spacing: .13em; }

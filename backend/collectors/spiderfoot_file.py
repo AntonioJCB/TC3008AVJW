@@ -3,7 +3,8 @@ from pathlib import Path
 
 
 class SpiderFootFileCollector:
-    name = "spiderfoot_file"
+    # Debe coincidir con el nombre de la fuente en la tabla fuentes_osint.
+    name = "spiderfoot"
 
     def __init__(self, path: str):
         self.path = Path(path)

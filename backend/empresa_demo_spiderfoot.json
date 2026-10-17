@@ -1,0 +1,9 @@
+[
+  {"event_type": "INTERNET_NAME", "data": "dev.empresa-demo.com", "module": "sfp_crt", "source_data": "empresa-demo.com"},
+  {"event_type": "INTERNET_NAME", "data": "portal.empresa-demo.com", "module": "sfp_dnsresolve", "source_data": "empresa-demo.com"},
+  {"event_type": "INTERNET_NAME", "data": "legacy.empresa-demo.com", "module": "sfp_crt", "source_data": "empresa-demo.com"},
+  {"event_type": "IP_ADDRESS", "data": "203.0.113.10", "module": "sfp_dnsresolve", "source_data": "portal.empresa-demo.com"},
+  {"event_type": "EMAIL_ADDRESS", "data": "admin@empresa-demo.com", "module": "sfp_emailformat", "source_data": "empresa-demo.com"},
+  {"event_type": "EMAIL_ADDRESS", "data": "ventas@empresa-demo.com", "module": "sfp_hunter", "source_data": "empresa-demo.com"},
+  {"event_type": "TCP_PORT_OPEN", "data": "203.0.113.10:8080", "module": "sfp_shodan", "source_data": "203.0.113.10"}
+]

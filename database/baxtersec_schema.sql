@@ -114,7 +114,70 @@ CREATE TABLE resultados_crudos (
                   REFERENCES fuentes_osint (id),
     estado        text        NOT NULL,
     contenido     jsonb       NOT NULL,
+    hash_contenido text       NOT NULL,
     observado_en  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX resultados_crudos_dedupe_idx
+    ON resultados_crudos (escaneo_id, fuente_id, hash_contenido);
+
+CREATE UNIQUE INDEX activos_organizacion_tipo_valor_idx
+    ON activos (organizacion_id, tipo, valor);
+
+-- ---------------------------------------------------------------------
+-- 8b. observaciones normalizadas (evidencia previa a reglas de riesgo)
+-- ---------------------------------------------------------------------
+CREATE TABLE observaciones (
+    id                  uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    escaneo_id          uuid        NOT NULL
+                        REFERENCES escaneos (id) ON DELETE CASCADE,
+    activo_id           uuid        NOT NULL
+                        REFERENCES activos (id) ON DELETE CASCADE,
+    fuente_id           uuid        NOT NULL
+                        REFERENCES fuentes_osint (id),
+    resultado_crudo_id  uuid        NOT NULL
+                        REFERENCES resultados_crudos (id) ON DELETE CASCADE,
+    atributo            text        NOT NULL
+                        CHECK (atributo IN (
+                            'descubierto', 'certificado', 'servicio_expuesto',
+                            'resuelve_a', 'cve', 'info_host'
+                        )),
+    datos               jsonb       NOT NULL DEFAULT '{}'::jsonb
+                        CHECK (jsonb_typeof(datos) = 'object'),
+    observado_en        timestamptz NOT NULL DEFAULT now(),
+    creado_en           timestamptz NOT NULL DEFAULT now(),
+    datos_hash          text        GENERATED ALWAYS AS (md5(datos::text)) STORED,
+    UNIQUE (escaneo_id, activo_id, fuente_id, atributo, datos_hash)
+);
+
+CREATE INDEX observaciones_escaneo_idx ON observaciones (escaneo_id);
+CREATE INDEX observaciones_activo_idx ON observaciones (activo_id);
+CREATE INDEX observaciones_fuente_idx ON observaciones (fuente_id);
+
+-- ---------------------------------------------------------------------
+-- 8a. resultados_fuentes: estado independiente de cada proveedor OSINT
+-- ---------------------------------------------------------------------
+CREATE TABLE resultados_fuentes (
+    id                   uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    escaneo_id           uuid        NOT NULL
+                         REFERENCES escaneos (id) ON DELETE CASCADE,
+    fuente_id            uuid        NOT NULL
+                         REFERENCES fuentes_osint (id),
+    estado               text        NOT NULL DEFAULT 'pendiente'
+                         CHECK (estado IN ('pendiente', 'ejecutando', 'completado', 'fallido')),
+    iniciado_en          timestamptz NULL,
+    finalizado_en        timestamptz NULL,
+    error                text        NULL,
+    resultado_crudo_id   uuid        NULL
+                         REFERENCES resultados_crudos (id) ON DELETE SET NULL,
+    ya_procesado         boolean     NOT NULL DEFAULT false,
+    observaciones_generadas integer  NOT NULL DEFAULT 0,
+    activos_nuevos       integer     NOT NULL DEFAULT 0,
+    activos_existentes   integer     NOT NULL DEFAULT 0,
+    observaciones_nuevas integer     NOT NULL DEFAULT 0,
+    observaciones_duplicadas integer NOT NULL DEFAULT 0,
+    descartadas          jsonb       NOT NULL DEFAULT '{}'::jsonb,
+    UNIQUE (escaneo_id, fuente_id)
 );
 
 -- ---------------------------------------------------------------------
@@ -193,6 +256,7 @@ CREATE INDEX idx_escaneos_solicitado_por      ON escaneos (solicitado_por);
 CREATE INDEX idx_escaneos_autorizacion        ON escaneos (autorizacion_id);
 CREATE INDEX idx_resultados_escaneo           ON resultados_crudos (escaneo_id);
 CREATE INDEX idx_resultados_fuente            ON resultados_crudos (fuente_id);
+CREATE INDEX idx_resultados_fuentes_escaneo   ON resultados_fuentes (escaneo_id);
 CREATE INDEX idx_hallazgos_escaneo            ON hallazgos (escaneo_id);
 CREATE INDEX idx_hallazgos_activo             ON hallazgos (activo_id);
 CREATE INDEX idx_hallazgos_fuente             ON hallazgos (fuente_id);

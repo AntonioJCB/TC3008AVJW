@@ -1,0 +1,89 @@
+{
+  "organizacion": "Empresa Demo Ficticia",
+  "dominio_principal": "empresa-demo.test",
+  "ips_en_alcance": ["203.0.113.10", "203.0.113.20", "203.0.113.30"],
+  "datos_crudos": {
+    "crt.sh": [
+      {
+        "id": 101,
+        "issuer_name": "CN=Demo Test CA",
+        "common_name": "empresa-demo.test",
+        "name_value": "empresa-demo.test\n*.empresa-demo.test\nportal.empresa-demo.test\ntercero.invalid",
+        "serial_number": "demo-serial-101",
+        "not_before": "2026-10-01T00:00:00",
+        "not_after": "2027-10-01T00:00:00",
+        "entry_timestamp": "2026-10-01T01:00:00"
+      }
+    ],
+    "Shodan": {
+      "total": 1,
+      "matches": [
+        {
+          "ip_str": "203.0.113.10",
+          "hostnames": ["web.empresa-demo.test", "shared.example.net"],
+          "domains": ["empresa-demo.test"],
+          "asn": "AS64599",
+          "org": "Empresa Demo Hosting",
+          "last_update": "2026-10-15T12:00:00Z",
+          "vulns": ["CVE-2024-12345"],
+          "data": [
+            {
+              "port": 443,
+              "transport": "tcp",
+              "product": "DemoHTTP",
+              "version": "1.2",
+              "cpe": ["cpe:/a:demo:http:1.2"],
+              "timestamp": "2026-10-15T11:00:00Z",
+              "vulns": {"CVE-2024-54321": {"verified": false}}
+            }
+          ]
+        }
+      ]
+    },
+    "theHarvester": {
+      "hosts": ["mail.empresa-demo.test:203.0.113.20", "empresa-demo.test"],
+      "vhosts": [],
+      "ips": ["203.0.113.30"],
+      "emails": ["contacto@empresa-demo.test", "externo@example.net"],
+      "asns": ["AS64599"]
+    },
+    "SpiderFoot": [
+      {
+        "event_type": "INTERNET_NAME",
+        "data": "api.empresa-demo.test",
+        "module": "sfp_dnsresolve",
+        "source_data": "empresa-demo.test"
+      },
+      {
+        "event_type": "IP_ADDRESS",
+        "data": "203.0.113.20",
+        "module": "sfp_dnsresolve",
+        "source_data": "mail.empresa-demo.test"
+      },
+      {
+        "event_type": "EMAILADDR",
+        "data": "soporte@empresa-demo.test",
+        "module": "sfp_email",
+        "source_data": "empresa-demo.test"
+      },
+      {
+        "type": "TCP_PORT_OPEN",
+        "data": "203.0.113.10:8443",
+        "module": "sfp_portscan_tcp",
+        "source": "203.0.113.10"
+      },
+      {
+        "type": "VULNERABILITY_CVE_HIGH",
+        "data": "CVE-2023-99999\nDemo-only finding",
+        "module": "sfp_vuln",
+        "source": "203.0.113.10:8443"
+      },
+      {
+        "type": "INTERNET_NAME",
+        "data": "other-company.invalid",
+        "module": "sfp_crt",
+        "source": "empresa-demo.test"
+      }
+    ]
+  }
+}

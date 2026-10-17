@@ -4,3 +4,6 @@
 database/.env
 database/node_modules/
 database/dist/
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/

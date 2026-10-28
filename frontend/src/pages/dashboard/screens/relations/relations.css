@@ -1,0 +1,115 @@
+/* Relaciones: mapa, indicadores y paneles propios de esta pantalla. */
+.proposal-dashboard .dashboard-content.relations-content { max-width: none; padding-bottom: 30px; }
+.relations-screen { display: grid; gap: 14px; }
+
+.relation-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.relation-metric { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 78px; padding: 10px 17px 11px; overflow: hidden; border-radius: 12px; }
+.relation-metric::after { position: absolute; right: 17px; bottom: 0; left: 17px; height: 2px; background: var(--theme-active); content: ''; }
+.relation-metric > span { color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: .055em; white-space: nowrap; }
+.relation-metric > strong { margin-top: 4px; color: var(--ink); font-size: 27px; line-height: 1.05; letter-spacing: -.045em; }
+.relation-metric.tone-critical > strong { color: var(--risk-critical); }
+.relation-metric.tone-concentration > strong { color: var(--theme-active); }
+
+.relations-workspace { display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(420px, 1fr); align-items: stretch; gap: 16px; }
+.relation-graph-card { display: flex; flex-direction: column; min-width: 0; padding: 15px; overflow: hidden; }
+.relation-graph-toolbar { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 12px 18px; min-height: 34px; margin: 0 2px 12px; }
+.relation-reset { min-height: 34px; padding: 6px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--theme-surface-alt); color: var(--ink); font-size: 12px; font-weight: 700; }
+.relation-reset:hover { border-color: var(--teal); color: var(--teal); }
+.relation-legend { display: flex; flex-wrap: wrap; gap: 8px 13px; color: var(--meta); font-size: 12px; }
+.relation-legend span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.relation-legend i { width: 10px; height: 10px; border-radius: 50%; background: var(--theme-active); }
+.relation-legend i.tone-service { background: var(--bronze); }
+.relation-legend i.tone-identity { background: var(--coral); }
+.relation-legend i.tone-critical { background: var(--risk-critical); box-shadow: 0 0 0 4px color-mix(in srgb, var(--risk-critical) 17%, transparent); }
+.relation-graph-controls { display: inline-flex; align-items: center; flex: none; gap: 4px; height: 34px; padding: 3px 5px; border: 1px solid var(--line); border-radius: 8px; background: var(--theme-field); }
+.relation-graph-controls button { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--theme-active); }
+.relation-graph-controls button:hover:not(:disabled) { background: var(--theme-surface-alt); }
+.relation-graph-controls button:disabled { opacity: .4; cursor: not-allowed; }
+.relation-graph-controls output { min-width: 37px; color: var(--ink); font-size: 11px; font-weight: 750; text-align: center; font-variant-numeric: tabular-nums; }
+.relation-graph-controls-divider { width: 1px; height: 18px; margin: 0 2px; background: var(--line); }
+.relation-graph-viewport { position: relative; flex: 1; width: 100%; min-height: 340px; aspect-ratio: 2.4; overflow: hidden; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--theme-field); cursor: grab; touch-action: none; user-select: none; }
+.relation-graph-viewport.dragging { cursor: grabbing; }
+.relation-graph { position: absolute; top: 0; left: 0; overflow: hidden; background-color: var(--theme-field); background-image: linear-gradient(to right, color-mix(in srgb, var(--line-soft) 65%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, var(--line-soft) 65%, transparent) 1px, transparent 1px); background-size: 57px 57px; transform-origin: top left; transition: transform .18s ease; will-change: transform; }
+.relation-graph-viewport.dragging .relation-graph { transition: none; }
+.relation-edges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.relation-edges line { stroke: var(--line); stroke-width: 1.6; stroke-dasharray: 5 5; vector-effect: non-scaling-stroke; opacity: .72; transition: stroke .22s ease, stroke-width .22s ease, opacity .22s ease; }
+.relation-edges line.critical { stroke: var(--risk-critical); stroke-width: 2.2; stroke-dasharray: none; }
+.relation-edges line.highlighted { stroke: var(--teal); stroke-width: 2.6; stroke-dasharray: none; opacity: 1; }
+.relation-edges line.critical.highlighted { stroke: var(--risk-critical); stroke-width: 3; }
+.relation-node { position: absolute; z-index: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; width: 154px; min-height: 110px; padding: 12px 13px; transform: translate(-50%, -50%); border: 1px solid var(--line); border-radius: 13px; background: var(--theme-surface); color: var(--ink); text-align: left; box-shadow: 0 8px 18px #0002; transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease, transform .2s ease; }
+.relation-node:hover { z-index: 2; transform: translate(-50%, -50%) scale(1.025); border-color: var(--teal); }
+.relation-node.selected { z-index: 3; border-color: var(--teal); background: var(--theme-surface-alt); box-shadow: 0 0 0 2px color-mix(in srgb, var(--teal) 75%, transparent), 0 0 0 12px color-mix(in srgb, var(--teal) 12%, transparent), 0 0 38px 14px color-mix(in srgb, var(--teal) 32%, transparent); }
+.relation-node.tone-critical { border-color: var(--risk-critical); }
+.relation-node.tone-critical.selected { border-color: var(--risk-critical); box-shadow: 0 0 0 2px color-mix(in srgb, var(--risk-critical) 75%, transparent), 0 0 0 12px color-mix(in srgb, var(--risk-critical) 12%, transparent), 0 0 38px 14px color-mix(in srgb, var(--risk-critical) 32%, transparent); }
+.relation-node > span { display: grid; place-items: center; min-width: 32px; height: 29px; padding: 0 5px; border-radius: 8px; background: var(--theme-surface-alt); color: var(--theme-active); font-size: 11px; font-weight: 800; }
+.relation-node.tone-service > span { color: var(--bronze); }
+.relation-node.tone-identity > span { color: var(--coral); }
+.relation-node.tone-critical > span { color: var(--risk-critical); }
+.relation-node strong { max-width: 100%; overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.relation-node small { color: var(--meta); font-size: 12px; white-space: nowrap; }
+.relation-node.root { width: 174px; min-height: 114px; }
+
+.relations-side { display: grid; align-content: start; gap: 14px; min-width: 0; }
+.relation-focus-card { min-width: 0; padding: 21px 24px 26px; }
+.relation-panel-label { display: block; color: var(--meta); font-size: 12px; font-weight: 800; letter-spacing: .09em; }
+.relation-kind-badge { display: inline-block; margin-top: 18px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 99px; color: var(--theme-soft); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.relation-focus-card h3 { overflow-wrap: anywhere; margin: 17px 0 9px; color: var(--ink); font-size: 23px; letter-spacing: -.035em; }
+.relation-focus-card p { min-height: 40px; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.relation-impact { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 21px; padding: 17px 0; border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); color: var(--muted); font-size: 13px; }
+.relation-impact strong { color: var(--risk-critical); font-size: 17px; white-space: nowrap; }
+.relation-facts { margin: 20px 0 0; padding: 4px 15px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--theme-field); }
+.relation-facts > div { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 12px 0; }
+.relation-facts > div + div { border-top: 1px solid var(--line-soft); }
+.relation-facts dt { color: var(--meta); font-size: 12px; }
+.relation-facts dd { max-width: 66%; margin: 0; color: var(--ink); font-size: 12px; font-weight: 700; overflow-wrap: anywhere; text-align: right; }
+
+.priority-routes-card { padding: 18px 24px; }
+.priority-routes-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 15px; border-bottom: 1px solid var(--line-soft); }
+.priority-routes-heading h3 { margin: 0; color: var(--ink); font-size: 13px; font-weight: 800; letter-spacing: .08em; }
+.priority-routes-heading strong { color: var(--risk-critical); font-size: 20px; }
+.priority-routes-list { display: grid; }
+.priority-routes-list button { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 8px; width: 100%; padding: 13px 5px; border: 0; border-bottom: 1px solid var(--line-soft); background: transparent; color: var(--ink); text-align: left; }
+.priority-routes-list button:last-child { border-bottom: 0; }
+.priority-routes-list button:hover,
+.priority-routes-list button.selected { background: var(--theme-surface-alt); }
+.priority-routes-list button > span:first-child { color: var(--coral); font-size: 13px; font-weight: 800; }
+.priority-routes-list strong,
+.priority-routes-list small { display: block; }
+.priority-routes-list strong { font-size: 13px; }
+.priority-routes-list small { margin-top: 3px; color: var(--meta); font-size: 12px; }
+.priority-route-detail { display: flex; justify-content: space-between; gap: 10px; margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--theme-surface-alt); color: var(--muted); font-size: 12px; }
+.priority-route-detail strong { color: var(--risk-critical); }
+
+@media (min-width: 1541px) and (max-height: 950px) {
+  .proposal-dashboard .dashboard-content.relations-content { padding-bottom: 16px; }
+  .relation-focus-card { padding-top: 17px; padding-bottom: 20px; }
+  .relation-impact { margin-top: 16px; padding: 14px 0; }
+  .priority-routes-card { padding-top: 14px; padding-bottom: 14px; }
+}
+
+@media (max-width: 1540px) {
+  .relations-workspace { grid-template-columns: 1fr; }
+  .relations-side { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 1100px) {
+  .relation-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 850px) {
+  .relations-side { grid-template-columns: 1fr; }
+  .relation-graph-card { padding: 16px; }
+}
+@media (max-width: 520px) {
+  .relations-screen { gap: 14px; }
+  .relation-metrics { gap: 9px; }
+  .relation-metric { min-height: 90px; padding: 14px; }
+  .relation-metric > span { font-size: 10px; }
+  .relation-metric > strong { font-size: 30px; }
+  .relation-graph-toolbar { align-items: start; flex-direction: column; }
+  .relation-focus-card,
+  .priority-routes-card { padding: 19px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .relation-edges line,
+  .relation-node,
+  .relation-graph { transition: none; }
+}

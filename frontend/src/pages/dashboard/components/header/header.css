@@ -1,0 +1,110 @@
+/* Shared dashboard header; the layout follows the BaxterSec mockup. */
+.proposal-dashboard .proposal-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  min-height: 105px;
+  padding: 23px clamp(18px, 3vw, 44px);
+  border-bottom: 1px solid var(--line-soft);
+  background: transparent;
+}
+
+.proposal-topbar .topbar-eyebrow {
+  display: block;
+  color: var(--meta);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.proposal-topbar .org-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 5px;
+}
+
+.proposal-topbar .org-title h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(23px, 2.5vw, 29px);
+  font-weight: 760;
+  letter-spacing: -.045em;
+  line-height: 1.1;
+}
+
+.proposal-topbar .domain-verified {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--risk-low) 17%, transparent);
+  color: var(--risk-low);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.proposal-topbar .proposal-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.proposal-topbar .sample-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.proposal-topbar .sample-status > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--risk-low);
+  box-shadow: 0 0 8px var(--risk-low);
+}
+
+.proposal-topbar .new-analysis-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 9px 13px;
+  border: 1px solid color-mix(in srgb, var(--coral) 58%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--coral) 10%, var(--theme-surface));
+  color: var(--ink);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.proposal-topbar .new-analysis-button svg {
+  color: var(--coral);
+}
+
+.proposal-topbar .new-analysis-button:hover {
+  background: color-mix(in srgb, var(--coral) 18%, var(--theme-surface));
+}
+
+@media (max-width: 900px) {
+  .proposal-topbar .sample-status { display: none; }
+}
+
+@media (max-width: 760px) {
+  .proposal-dashboard .proposal-topbar { min-height: 78px; padding: 17px 18px; }
+}
+
+@media (max-width: 520px) {
+  .proposal-topbar .org-title h1 { font-size: 19px; overflow-wrap: anywhere; }
+  .proposal-topbar .topbar-eyebrow { font-size: 9px; }
+  .proposal-topbar .new-analysis-button { width: 38px; min-width: 38px; padding: 0; font-size: 0; }
+  .proposal-topbar .new-analysis-button b { display: none; }
+}

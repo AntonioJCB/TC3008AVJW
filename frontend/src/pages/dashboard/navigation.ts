@@ -1,15 +1,13 @@
-import { GitBranch, History, LayoutDashboard, Network, ScanSearch, Settings2, Sparkles, TriangleAlert } from 'lucide-react'
-
 export const navigation = [
-  { path: '/home', label: 'Resumen', section: 'resumen', group: 'PRINCIPAL', icon: LayoutDashboard },
-  { path: '/home/activos', label: 'Activos', section: 'activos', group: 'DESCUBRIMIENTO', icon: Network },
-  { path: '/home/relaciones', label: 'Relaciones', section: 'relaciones', group: 'DESCUBRIMIENTO', icon: GitBranch },
-  { path: '/home/fuentes', label: 'Fuentes', section: 'fuentes', group: 'DESCUBRIMIENTO', icon: ScanSearch },
-  { path: '/home/hallazgos', label: 'Hallazgos', section: 'hallazgos', group: 'SEGURIDAD', icon: TriangleAlert },
-  { path: '/home/historial', label: 'Historial', section: 'historial', group: 'SEGURIDAD', icon: History },
-  { path: '/home/asistente', label: 'Asistente', section: 'asistente', group: 'ANÁLISIS', icon: Sparkles },
-  { path: '/home/configuracion', label: 'Configuración', section: 'configuracion', group: 'ANÁLISIS', icon: Settings2 },
+  { path: '/home', label: 'Resumen', section: 'resumen', group: 'Principal', icon: '▦' },
+  { path: '/home/activos', label: 'Activos', section: 'activos', group: 'Descubrimiento', icon: '◇' },
+  { path: '/home/relaciones', label: 'Relaciones', section: 'relaciones', group: 'Descubrimiento', icon: '⌘' },
+  { path: '/home/fuentes', label: 'Fuentes', section: 'fuentes', group: 'Descubrimiento', icon: '⌕' },
+  { path: '/home/hallazgos', label: 'Hallazgos', section: 'hallazgos', group: 'Seguridad', icon: '△' },
+  { path: '/home/historial', label: 'Historial', section: 'historial', group: 'Seguridad', icon: '◔' },
+  { path: '/home/asistente', label: 'Asistente', section: 'asistente', group: 'Análisis', icon: '✦' },
+  { path: '/home/configuracion', label: 'Configuración', section: 'configuracion', group: 'Análisis', icon: '⚙' },
 ] as const
 
 export type DashboardSection = (typeof navigation)[number]['section']
-export const navigationGroups = ['PRINCIPAL', 'DESCUBRIMIENTO', 'SEGURIDAD', 'ANÁLISIS'] as const
+export const navigationGroups = ['Principal', 'Descubrimiento', 'Seguridad', 'Análisis'] as const

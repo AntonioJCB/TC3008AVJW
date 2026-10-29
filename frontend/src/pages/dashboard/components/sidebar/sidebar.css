@@ -1,0 +1,221 @@
+/* Sidebar faithful to the BaxterSec mockup. Colors follow the global theme tokens. */
+.proposal-dashboard .sidebar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-width: 0;
+  padding: 24px 16px 18px;
+  overflow-y: auto;
+  border-right: 1px solid var(--line-soft);
+  background: rgba(12, 29, 38, .97);
+  backdrop-filter: blur(18px);
+  transition: background .25s;
+}
+
+:root[data-theme='light'] .proposal-dashboard .sidebar {
+  background: rgba(248, 250, 251, .97);
+}
+
+.proposal-dashboard .sidebar .brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 10px 24px;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 760;
+  letter-spacing: -.04em;
+}
+
+.proposal-dashboard .sidebar .brand-mark {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--theme-surface-alt);
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.proposal-dashboard .sidebar .brand-mark::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: -1px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--teal);
+  content: '';
+}
+
+.proposal-dashboard .sidebar .brand-mark::after {
+  display: none;
+}
+
+.proposal-dashboard .sidebar .brand-mark small {
+  position: absolute;
+  right: -3px;
+  bottom: -4px;
+  display: grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--theme-sidebar);
+  border-radius: 50%;
+  background: var(--coral);
+  color: #07141A;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+:root[data-theme='light'] .proposal-dashboard .sidebar .brand-mark small {
+  color: #FFFFFF;
+}
+
+.proposal-dashboard .sidebar nav {
+  display: block;
+}
+
+.proposal-dashboard .sidebar .nav-group + .nav-group {
+  margin-top: 19px;
+}
+
+.proposal-dashboard .sidebar .nav-label {
+  display: block;
+  margin: 0 10px 9px;
+  color: var(--meta);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .11em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.proposal-dashboard .sidebar .nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+  transition: background-color .2s ease, color .2s ease;
+}
+
+.proposal-dashboard .sidebar .nav-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  color: var(--meta);
+  font-family: "Segoe UI Symbol", Inter, ui-sans-serif, sans-serif;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.proposal-dashboard .sidebar .nav-item:hover,
+.proposal-dashboard .sidebar .nav-item.active {
+  background: var(--theme-surface-alt);
+  color: var(--ink);
+}
+
+.proposal-dashboard .sidebar .nav-item.active {
+  font-weight: 650;
+}
+
+.proposal-dashboard .sidebar .nav-item.active::before {
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 0;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--teal);
+  content: '';
+}
+
+.proposal-dashboard .sidebar .nav-item.active .nav-icon {
+  color: var(--teal);
+}
+
+.proposal-dashboard .sidebar-foot {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: auto;
+  padding: 14px 10px 12px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.proposal-dashboard .sidebar-foot .avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--theme-surface-alt);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.proposal-dashboard .sidebar-foot strong,
+.proposal-dashboard .sidebar-foot span {
+  display: block;
+  white-space: nowrap;
+}
+
+.proposal-dashboard .sidebar-foot strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.proposal-dashboard .sidebar-foot span {
+  margin-top: 2px;
+  color: var(--meta);
+  font-size: 11px;
+}
+
+@media (max-width: 760px) {
+  .proposal-dashboard .sidebar {
+    position: relative;
+    z-index: auto;
+    height: auto;
+    padding: 14px 16px;
+    overflow: visible;
+    border-right: 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .proposal-dashboard .sidebar .brand { margin: 0 10px 12px; }
+  .proposal-dashboard .sidebar nav { display: flex; gap: 6px; overflow-x: auto; }
+  .proposal-dashboard .sidebar .nav-group { display: flex; flex: none; gap: 4px; }
+  .proposal-dashboard .sidebar .nav-group + .nav-group { margin-top: 0; }
+  .proposal-dashboard .sidebar .nav-label,
+  .proposal-dashboard .sidebar-foot { display: none; }
+  .proposal-dashboard .sidebar .nav-item { width: auto; min-height: 38px; padding: 8px 10px; font-size: 12px; }
+  .proposal-dashboard .sidebar .nav-icon { width: 15px; font-size: 15px; }
+  .proposal-dashboard .sidebar .nav-item.active::before { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .proposal-dashboard .sidebar .nav-item { transition: none; }
+}

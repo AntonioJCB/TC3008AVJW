@@ -1,17 +1,37 @@
 import { useState } from 'react'
-import { demoProject, type Severity } from '../../services/demoData'
-import FindingCard from './components/FindingCard'
-
-const severities: Array<Severity | 'Todos'> = ['Todos', 'Crítico', 'Medio']
+import FindingDetailDialog from './components/FindingDetailDialog'
+import FindingInsights from './components/FindingInsights'
+import FindingQueue from './components/FindingQueue'
+import FindingsKpis from './components/FindingsKpis'
+import PriorityExplanationDialog from './components/PriorityExplanationDialog'
+import { demoProject } from '../../services/demoData'
+import { useFindingExplorer } from './controller/useFindingExplorer'
+import './findings.css'
 
 export default function FindingsScreen() {
-  const [severity, setSeverity] = useState<Severity | 'Todos'>('Todos')
-  const findings = demoProject.findings.filter((finding) => severity === 'Todos' || finding.severity === severity)
+  const explorer = useFindingExplorer()
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [explanationOpen, setExplanationOpen] = useState(false)
+
   return (
-    <section className="content-card findings-section" aria-labelledby="findings-title">
-      <div className="section-heading"><div><div className="eyebrow">EVALUACIÓN</div><h2 id="findings-title">Hallazgos del escenario</h2><p>Ordenados por severidad para facilitar la revisión.</p></div><span className="count-pill">{findings.length} {findings.length === 1 ? 'hallazgo' : 'hallazgos'}</span></div>
-      <div className="severity-filters" aria-label="Filtrar por severidad">{severities.map((item) => <button key={item} className={severity === item ? 'selected' : ''} type="button" onClick={() => setSeverity(item)}>{item}</button>)}</div>
-      <div className="finding-list">{findings.map((finding) => <FindingCard finding={finding} key={finding.id} />)}</div>
-    </section>
+    <div className="findings-screen">
+      <header className="findings-header">
+        <div>
+          <h1>Hallazgos</h1>
+          <p>Prioriza lo que requiere investigación y conserva el vínculo entre regla, evidencia, activo y fuente.</p>
+        </div>
+        <div className="findings-header-actions">
+          <span>Actualizado {demoProject.lastAnalysis}</span>
+          <button type="button" onClick={() => setExplanationOpen(true)}><span aria-hidden="true">✦</span> Explicar prioridades</button>
+        </div>
+      </header>
+      <FindingsKpis />
+      <div className="findings-workspace">
+        <FindingQueue explorer={explorer} />
+        <FindingInsights finding={explorer.selectedFinding} priority={explorer.selectedPriority} onOpenDetail={() => setDetailOpen(true)} />
+      </div>
+      {detailOpen && explorer.selectedFinding && <FindingDetailDialog finding={explorer.selectedFinding} onClose={() => setDetailOpen(false)} />}
+      {explanationOpen && <PriorityExplanationDialog finding={explorer.selectedFinding} onClose={() => setExplanationOpen(false)} />}
+    </div>
   )
 }

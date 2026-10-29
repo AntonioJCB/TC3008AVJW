@@ -1,13 +1,22 @@
-import { Globe2 } from 'lucide-react'
-import { demoProject } from '../../services/demoData'
-import RelationItem from './components/RelationItem'
+import PriorityRoutes from './components/PriorityRoutes'
+import RelationFocus from './components/RelationFocus'
+import RelationGraph from './components/RelationGraph'
+import RelationMetrics from './components/RelationMetrics'
+import { useRelationExplorer } from './controller/useRelationExplorer'
+import './relations.css'
 
 export default function RelationsScreen() {
-  return (
-    <section className="content-card simple-section" aria-labelledby="relations-title">
-      <div className="eyebrow">DESCUBRIMIENTO</div><h2 id="relations-title">Relaciones del dominio</h2><p>Vínculos del conjunto de prueba. El mapa completo se conectará a los datos normalizados.</p>
-      <div className="relation-root"><Globe2 size={20} /><strong>{demoProject.domain}</strong></div>
-      <div className="relation-list">{demoProject.assets.filter((asset) => asset.kind === 'Subdominio').map((asset) => <RelationItem asset={asset} key={asset.id} />)}</div>
-    </section>
-  )
+  const explorer = useRelationExplorer()
+
+  return <div className="relations-screen">
+    <h2 className="sr-only">Relaciones</h2>
+    <RelationMetrics />
+    <div className="relations-workspace">
+      <RelationGraph selectedNodeId={explorer.selectedNode.id} selectedRoute={explorer.selectedRoute} onSelectNode={explorer.selectNode} onReset={explorer.reset} />
+      <aside className="relations-side" aria-label="Detalle de relaciones">
+        <RelationFocus node={explorer.selectedNode} />
+        <PriorityRoutes selectedRoute={explorer.selectedRoute} onSelectRoute={explorer.selectRoute} />
+      </aside>
+    </div>
+  </div>
 }

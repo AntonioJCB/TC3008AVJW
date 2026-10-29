@@ -1,20 +1,25 @@
-import { Search } from 'lucide-react'
-import { type AssetKind } from '../../services/demoData'
-import AssetRow from './components/AssetRow'
-import { useAssetFilters } from './useAssetFilters'
-
-const kinds: Array<AssetKind | 'Todos'> = ['Todos', 'Subdominio', 'IP pública', 'Correo', 'Puerto']
+import { useCallback, useState } from 'react'
+import AssetDetailDialog from './components/AssetDetailDialog'
+import AssetInsights from './components/AssetInsights'
+import AssetInventory from './components/AssetInventory'
+import AssetKpis from './components/AssetKpis'
+import { useAssetExplorer } from './controller/useAssetExplorer'
+import './assets.css'
 
 export default function AssetsScreen() {
-  const { assets, query, setQuery, kind, setKind } = useAssetFilters()
+  const explorer = useAssetExplorer()
+  const [detailOpen, setDetailOpen] = useState(false)
+  const closeDetail = useCallback(() => setDetailOpen(false), [])
+
   return (
-    <section className="content-card asset-section" aria-labelledby="assets-title">
-      <div className="section-heading"><div><div className="eyebrow">INVENTARIO</div><h2 id="assets-title">Activos descubiertos</h2><p>Registros ficticios del dominio de muestra.</p></div><span className="count-pill">{assets.length} {assets.length === 1 ? 'resultado' : 'resultados'}</span></div>
-      <div className="filter-row">
-        <label className="search-box"><Search size={17} /><span className="sr-only">Buscar activos</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nombre o detalle" /></label>
-        <label className="select-box"><span className="sr-only">Tipo de activo</span><select value={kind} onChange={(event) => setKind(event.target.value as AssetKind | 'Todos')}>{kinds.map((item) => <option key={item}>{item}</option>)}</select></label>
+    <div className="assets-screen">
+      <h2 className="sr-only">Activos</h2>
+      <AssetKpis />
+      <div className="assets-workspace">
+        <AssetInventory assets={explorer.visibleAssets} selectedId={explorer.selectedAsset?.id ?? null} onSelect={explorer.selectAsset} query={explorer.query} onQueryChange={explorer.setQuery} filter={explorer.filter} filterCounts={explorer.filterCounts} onFilterChange={explorer.setFilter} newOnly={explorer.newOnly} onToggleNew={explorer.toggleNewOnly} matchingCount={explorer.matchingCount} page={explorer.page} pageCount={explorer.pageCount} pageStart={explorer.pageStart} pageEnd={explorer.pageEnd} onPageChange={explorer.setPage} />
+        <AssetInsights asset={explorer.selectedAsset} onOpenDetail={() => setDetailOpen(true)} />
       </div>
-      <div className="asset-list">{assets.length ? assets.map((asset) => <AssetRow asset={asset} key={asset.id} />) : <div className="empty-result">No hay activos que coincidan con los filtros.</div>}</div>
-    </section>
+      {detailOpen && explorer.selectedAsset && <AssetDetailDialog asset={explorer.selectedAsset} onClose={closeDetail} />}
+    </div>
   )
 }

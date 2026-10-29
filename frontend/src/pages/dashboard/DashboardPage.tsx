@@ -14,6 +14,7 @@ import HistoryScreen from './screens/history/HistoryScreen';
 import AssistantScreen from './screens/assistant/AssistantScreen';
 import SettingsScreen from './screens/settings/SettingsScreen';
 import './dashboard.css';
+import './typography.css';
 
 const screens: Record<DashboardSection, React.ComponentType> = {
   resumen: OverviewScreen,
@@ -46,11 +47,14 @@ export default function DashboardPage() {
       <div className="dashboard-main">
         <DashboardHeader onNewAnalysis={() => setAnalysisDialogOpen(true)} />
         <main
-          className={`dashboard-content${activeSection === 'relaciones' ? ' relations-content' : ''}`}>
+          className={`dashboard-content${activeSection === 'relaciones' ? ' relations-content' : ''}${activeSection === 'fuentes' ? ' sources-content' : ''}${activeSection === 'hallazgos' ? ' findings-content' : ''}${activeSection === 'historial' ? ' history-content' : ''}`}>
           <div className="dashboard-view" key={activeSection}>
             {activeSection !== 'resumen' &&
               activeSection !== 'activos' &&
-              activeSection !== 'relaciones' && (
+              activeSection !== 'relaciones' &&
+              activeSection !== 'fuentes' &&
+              activeSection !== 'hallazgos' &&
+              activeSection !== 'historial' && (
                 <div className="content-intro proposal-section-intro">
                   <div>
                     <div className="eyebrow">

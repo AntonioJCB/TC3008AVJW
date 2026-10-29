@@ -18,17 +18,18 @@ export interface Finding {
 }
 
 export const demoProject = {
-  company: 'Innovatech Solutions Ltd.',
-  domain: 'innovatech-demo.com',
+  company: 'Empresa Demo',
+  domain: 'empresa.com',
+  lastAnalysis: 'hoy, 10:32',
   score: 75,
   assets: [
-    { id: 'sub-api', kind: 'Subdominio', value: 'api.innovatech-demo.com', detail: 'API pública' },
-    { id: 'sub-dev', kind: 'Subdominio', value: 'dev.innovatech-demo.com', detail: 'Entorno de desarrollo' },
-    { id: 'sub-mail', kind: 'Subdominio', value: 'mail.innovatech-demo.com', detail: 'Servicio de correo' },
+    { id: 'sub-api', kind: 'Subdominio', value: 'api.empresa.com', detail: 'API pública' },
+    { id: 'sub-dev', kind: 'Subdominio', value: 'dev.empresa.com', detail: 'Entorno de desarrollo' },
+    { id: 'sub-mail', kind: 'Subdominio', value: 'mail.empresa.com', detail: 'Servicio de correo' },
     { id: 'ip-1', kind: 'IP pública', value: '192.0.2.10', detail: 'IP de documentación' },
     { id: 'ip-2', kind: 'IP pública', value: '192.0.2.11', detail: 'IP de documentación' },
-    { id: 'email-1', kind: 'Correo', value: 'admin@innovatech-demo.com', detail: 'Correo corporativo' },
-    { id: 'email-2', kind: 'Correo', value: 'soporte@innovatech-demo.com', detail: 'Correo corporativo' },
+    { id: 'email-1', kind: 'Correo', value: 'admin@empresa.com', detail: 'Correo corporativo' },
+    { id: 'email-2', kind: 'Correo', value: 'soporte@empresa.com', detail: 'Correo corporativo' },
     { id: 'port-22', kind: 'Puerto', value: '22 / SSH', detail: 'Servicio en datos de ejemplo' },
     { id: 'port-80', kind: 'Puerto', value: '80 / HTTP', detail: 'Servicio en datos de ejemplo' },
     { id: 'port-443', kind: 'Puerto', value: '443 / HTTPS', detail: 'Servicio en datos de ejemplo' },
@@ -39,14 +40,14 @@ export const demoProject = {
       id: 'finding-1',
       severity: 'Crítico',
       title: 'Puerto SSH y base de datos expuestos en servidor DEV',
-      target: 'dev.innovatech-demo.com',
+      target: 'dev.empresa.com',
       description: 'El escenario ficticio identifica servicios sensibles en el entorno de desarrollo. La exposición requiere validación y control de acceso.',
     },
     {
       id: 'finding-2',
       severity: 'Medio',
       title: 'Ausencia de registros SPF y DMARC',
-      target: 'innovatech-demo.com',
+      target: 'empresa.com',
       description: 'El escenario ficticio marca políticas de autenticación de correo pendientes de revisión.',
     },
   ] satisfies Finding[],
@@ -66,5 +67,3 @@ export const demoAnswers = {
     answer: 'La muestra contiene tres subdominios, dos direcciones IP de documentación, dos correos corporativos y cuatro puertos. Los datos provienen del archivo de prueba del backend.',
   },
 } as const
-
-export const plannedSources = ['crt.sh', 'SpiderFoot', 'theHarvester', 'Shodan'] as const

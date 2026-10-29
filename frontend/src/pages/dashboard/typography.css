@@ -1,0 +1,136 @@
+/* Escala compartida del dashboard. Las pantallas conservan sus estilos de composición. */
+.proposal-dashboard {
+  --type-page: clamp(27px, 2.2vw, 32px);
+  --type-organization: clamp(23px, 1.9vw, 28px);
+  --type-section: 18px;
+  --type-panel: 19px;
+  --type-body: 13px;
+  --type-secondary: 12px;
+  --type-label: 11px;
+  --type-kpi: 26px;
+  --type-kpi-label: 11px;
+  --type-kpi-note: 11px;
+  --weight-title: 700;
+  --weight-emphasis: 650;
+  font-family: system-ui, "Segoe UI", sans-serif;
+  font-size: var(--type-body);
+  line-height: 1.45;
+}
+
+/* Jerarquía de página y navegación. */
+.proposal-dashboard :is(.content-intro h1, .findings-header h1, .history-header h1) {
+  font-size: var(--type-page);
+  font-weight: var(--weight-title);
+}
+.proposal-dashboard :is(.findings-header p, .history-header p) {
+  font-size: var(--type-body);
+}
+.proposal-dashboard .proposal-topbar .org-title h1 {
+  font-size: var(--type-organization);
+  font-weight: var(--weight-title);
+}
+.proposal-dashboard .proposal-topbar .topbar-eyebrow,
+.proposal-dashboard .proposal-topbar .analysis-status {
+  font-size: var(--type-secondary);
+}
+.proposal-dashboard .proposal-topbar .new-analysis-button {
+  min-height: 42px;
+  padding: 9px 15px;
+  font-size: var(--type-body);
+}
+.proposal-dashboard .proposal-topbar .new-analysis-button b { font-weight: var(--weight-title); }
+.proposal-dashboard .sidebar .brand { font-size: 17px; font-weight: var(--weight-title); }
+.proposal-dashboard .sidebar .nav-label { font-size: 10px; font-weight: var(--weight-title); }
+.proposal-dashboard .sidebar .nav-item { font-size: var(--type-body); }
+.proposal-dashboard .sidebar-foot strong { font-size: var(--type-secondary); font-weight: var(--weight-emphasis); }
+
+/* Encabezados y texto de apoyo equivalentes entre pantallas. */
+.proposal-dashboard :is(.asset-inventory-header h3, .source-inventory-header h2, .finding-queue-toolbar h2, .history-log-toolbar h2) {
+  font-size: var(--type-section);
+  font-weight: var(--weight-title);
+}
+.proposal-dashboard :is(.selected-asset-card h3, .source-quality h2, .finding-insights h2, .relation-focus-card h3, .history-comparison h2) {
+  font-size: var(--type-panel);
+  font-weight: var(--weight-title);
+}
+.proposal-dashboard :is(.asset-inventory-header p, .source-inventory-header p, .finding-queue-toolbar p, .history-log-toolbar p) {
+  font-size: var(--type-secondary);
+}
+.proposal-dashboard .history-chart-heading h2 {
+  font-size: 14px;
+  font-weight: var(--weight-title);
+}
+.proposal-dashboard .source-card-heading h2 {
+  font-size: var(--type-secondary);
+  font-weight: var(--weight-title);
+}
+
+/* Los KPI principales comparten alto, padding, tamaño y peso. */
+.proposal-dashboard :is(.asset-kpi, .source-kpi, .finding-kpi, .history-kpi) {
+  min-height: 100px;
+  padding: 14px 16px 16px;
+}
+.proposal-dashboard :is(.asset-kpi, .source-kpi, .finding-kpi, .history-kpi)::after {
+  right: 16px;
+  left: 16px;
+}
+.proposal-dashboard :is(.asset-kpi, .source-kpi, .finding-kpi, .history-kpi) > span {
+  font-size: var(--type-kpi-label);
+  font-weight: var(--weight-title);
+  letter-spacing: .055em;
+}
+.proposal-dashboard :is(.asset-kpi, .source-kpi, .finding-kpi, .history-kpi) > strong {
+  margin-top: 6px;
+  font-size: var(--type-kpi);
+  font-weight: var(--weight-title);
+  line-height: 1;
+}
+.proposal-dashboard :is(.asset-kpi, .source-kpi, .finding-kpi, .history-kpi) > small {
+  padding-top: 4px;
+  font-size: var(--type-kpi-note);
+  line-height: 1.25;
+}
+.proposal-dashboard .relation-metric {
+  min-height: 72px;
+  padding: 9px 15px 11px;
+}
+.proposal-dashboard .relation-metric > span {
+  font-size: var(--type-kpi-label);
+  font-weight: var(--weight-title);
+}
+.proposal-dashboard .relation-metric > strong {
+  font-size: 24px;
+  font-weight: var(--weight-title);
+}
+
+/* Números especiales del Resumen conservan su jerarquía sin crecer como titulares. */
+.proposal-dashboard .overview-screen .proposal-score-ring strong { font-size: 38px; font-weight: var(--weight-title); }
+.proposal-dashboard .overview-screen .summary-numbers strong { font-size: var(--type-kpi); font-weight: var(--weight-title); }
+.proposal-dashboard .overview-screen .summary-highlights strong { font-size: 19px; font-weight: var(--weight-title); }
+
+/* Listados: valor principal, apoyo y acciones siguen una misma escala. */
+.proposal-dashboard :is(.source-record-cell strong, .finding-record-cell strong, .history-entry-date strong, .history-entry-change strong, .history-entry-cell strong, .relation-node strong) {
+  font-size: var(--type-body);
+  font-weight: var(--weight-emphasis);
+}
+.proposal-dashboard .asset-observed { font-size: 14px; font-weight: var(--weight-emphasis); }
+.proposal-dashboard .asset-type,
+.proposal-dashboard .asset-exposure { font-size: var(--type-body); font-weight: var(--weight-emphasis); }
+.proposal-dashboard :is(.asset-secondary, .source-record-cell small, .finding-record-cell small, .history-entry-date small, .history-entry-change small, .history-entry-cell small, .relation-node small) {
+  font-size: var(--type-secondary);
+}
+.proposal-dashboard :is(.asset-open-detail, .source-detail-action, .finding-open-detail, .history-header-actions button) {
+  font-size: var(--type-body);
+  font-weight: var(--weight-title);
+}
+
+@media (max-width: 650px) {
+  .proposal-dashboard :is(.asset-kpi, .source-kpi, .finding-kpi, .history-kpi) {
+    min-height: 94px;
+    padding: 13px;
+  }
+  .proposal-dashboard :is(.asset-kpi, .source-kpi, .finding-kpi, .history-kpi) > strong { font-size: 24px; }
+  .proposal-dashboard .relation-metric > strong { font-size: 23px; }
+  .proposal-dashboard .proposal-topbar .org-title h1 { font-size: 20px; }
+  .proposal-dashboard .proposal-topbar .new-analysis-button { width: 42px; min-width: 42px; padding: 0; font-size: 0; }
+}

@@ -55,6 +55,12 @@ class RunAllTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ScanEndpointTests(unittest.TestCase):
+    def test_token_invalido_no_intenta_conectar_a_supabase(self):
+        with patch.object(main, "_supabase_client") as client:
+            response = TestClient(main.app).get("/api/escaneos", headers={"Authorization": "Bearer 1"})
+        self.assertEqual(response.status_code, 401)
+        client.assert_not_called()
+
     def test_health_and_authentication_gate(self) -> None:
         client = TestClient(main.app)
         self.assertEqual(client.get("/health").json(), {"estado": "disponible"})
@@ -65,7 +71,8 @@ class ScanEndpointTests(unittest.TestCase):
         self.assertTrue(main._scope_allows_domain("example.com, *.example.com", "example.com"))
         self.assertFalse(main._scope_allows_domain("*.example.com", "example.com"))
 
-    def test_response_names_failed_source_and_marks_scan_incomplete(self) -> None:
+    def test_execute_responds_202_and_marks_scan_incomplete_when_one_source_fails(self) -> None:
+        """El escaneo corre en segundo plano: la respuesta es inmediata y el resultado queda guardado."""
         scan_id = "00000000-0000-0000-0000-000000000001"
         main.app.dependency_overrides[main._current_user] = lambda: SimpleNamespace(id="user-id")
         self.addCleanup(main.app.dependency_overrides.clear)
@@ -79,6 +86,10 @@ class ScanEndpointTests(unittest.TestCase):
             process_timeout_seconds=900,
             spiderfoot_timeout_seconds=1800,
             spiderfoot_poll_seconds=3,
+            scan_timeout_seconds=2100,
+            crtsh_retries=3,
+            shodan_max_ips=10,
+            shodan_pause_seconds=1.1,
         )
         outcomes = {
             name: {
@@ -98,24 +109,30 @@ class ScanEndpointTests(unittest.TestCase):
             for name, outcome in outcomes.items()
         }
 
+        async def fake_run_all(domain, orchestrator_settings, runners=None, on_result=None, timeout_seconds=None):
+            for name, outcome in outcomes.items():
+                await on_result(name, outcome)
+            return outcomes
+
         with (
             patch.object(main, "get_settings", return_value=settings),
             patch.object(main, "_supabase_client", return_value=object()),
-            patch.object(main, "_verify_scope", return_value=({"organizacion_id": "org-id"}, "example.com")),
+            patch.object(main, "_verify_scope", return_value=({"id": scan_id, "organizacion_id": "org-id"}, "example.com")),
             patch.object(main, "_source_ids", return_value={name: name for name in main.SOURCE_NAMES}),
             patch.object(main, "_start_scan"),
-            patch.object(main, "run_all", new=AsyncMock(return_value=outcomes)),
-            patch.object(main, "_persist_source", side_effect=lambda *args: persisted[args[4]]),
-            patch.object(main, "_finish_scan") as finish_scan,
+            patch("app.scan_service.run_all", new=fake_run_all),
+            patch("app.scan_service._persist_source", side_effect=lambda *args: persisted[args[4]]) as persist,
+            patch("app.scan_service._finish_scan") as finish_scan,
+            patch("app.scan_service.audit"),
+            patch("app.scan_service.calcular_y_guardar") as risk,
         ):
             response = TestClient(main.app).post(f"/api/escaneos/{scan_id}/ejecutar")
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["estado"], "incompleto")
-        source_results = {source["fuente"]: source for source in response.json()["fuentes"]}
-        self.assertEqual(source_results["Shodan"]["estado"], "fallido")
-        self.assertIn("403", source_results["Shodan"]["error"])
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()["estado"], "ejecutando")
+        self.assertEqual(persist.call_count, 4)
         self.assertEqual(finish_scan.call_args.args[2], "incompleto")
+        risk.assert_called_once()
 
 
 if __name__ == "__main__":

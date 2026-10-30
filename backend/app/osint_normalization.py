@@ -409,7 +409,12 @@ def _adapt_shodan(raw: Any, domain: str, in_scope_ips: list[str]) -> dict[str, A
         observed_at = _add_shodan_host_facts(host, ip, result)
         _add_shodan_host_cves(host, ip, observed_at, result)
         _add_shodan_hostnames(host, ip, domain, observed_at, result)
-        for banner in _list(host.get("data")):
+        banners = _list(host.get("data"))
+        if not banners and "port" in host:
+            # /shodan/host/search devuelve un banner por entrada ("port" al nivel
+            # superior y "data" como texto); /shodan/host/{ip} trae data[] de banners.
+            banners = [host]
+        for banner in banners:
             _add_shodan_banner(banner, ip, observed_at, result)
     return result
 

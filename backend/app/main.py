@@ -1,29 +1,50 @@
 from __future__ import annotations
 
 import ipaddress
+import logging
 import os
 import re
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from functools import lru_cache
-from typing import Annotated, Any
+from typing import Annotated, Any, AsyncIterator
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from supabase import Client, create_client
 
-from app.ingestion import ingestar_resultado
-from app.orchestrators import OrchestratorSettings, run_all
-from app.settings import Settings, get_settings
+from app.orchestrators import Runner, run_all  # noqa: F401  (run_all se re-exporta para las pruebas)
+from app.risk.persistencia import calcular_y_guardar, leer_hallazgos, leer_riesgo
+from app.scan_service import (  # noqa: F401  (se re-exportan los helpers con su nombre histórico)
+    ESTADOS_FINALES,
+    SOURCE_NAMES,
+    audit,
+    _execute,
+    _finish_scan,
+    _persist_source,
+    _source_ids,
+    _start_scan,
+    compute_scan_state,
+    reap_stuck_scans,
+    run_scan_job,
+    scan_message,
+)
+from app.settings import Settings, get_settings  # noqa: F401
 
+logger = logging.getLogger(__name__)
 
-SOURCE_NAMES = ("crt.sh", "Shodan", "theHarvester", "SpiderFoot")
 INVALID_DOMAIN_DETAIL = "El dominio de la organización no es válido"
 DOMAIN_LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
 bearer = HTTPBearer(auto_error=False)
+
+
+# ---------------------------------------------------------------------
+# Modelos de respuesta
+# ---------------------------------------------------------------------
 
 
 class SourceStatus(BaseModel):
@@ -31,6 +52,7 @@ class SourceStatus(BaseModel):
     estado: str
     error: str | None = None
     resultado_crudo_id: str | None = None
+    iniciado_en: str | None = None
     finalizado_en: str | None = None
     ya_procesado: bool = False
     observaciones_generadas: int = 0
@@ -41,10 +63,73 @@ class SourceStatus(BaseModel):
     descartadas: dict[str, int] = Field(default_factory=dict)
 
 
+class RiskSummary(BaseModel):
+    puntaje_global: int
+    infraestructura: int
+    identidad_digital: int
+    configuracion: int
+    fuga_de_datos: int
+    #: True si alguna fuente falló: el puntaje no vio todo y puede estar subestimado.
+    es_parcial: bool = False
+    fuentes_faltantes: list[str] = Field(default_factory=list)
+    #: Qué reglas se evaluaron y cuáles no (y por qué).
+    cobertura: dict[str, Any] = Field(default_factory=dict)
+    version_motor: str | None = None
+    calculado_en: str | None = None
+
+
 class ScanStatus(BaseModel):
     escaneo_id: str
     estado: str
     fuentes: list[SourceStatus]
+    #: Frase lista para mostrar: qué fuentes fallaron y cuáles no.
+    mensaje: str = ""
+    dominio: str | None = None
+    fuentes_ok: list[str] = Field(default_factory=list)
+    fuentes_fallidas: list[str] = Field(default_factory=list)
+    iniciado_en: str | None = None
+    finalizado_en: str | None = None
+    riesgo: RiskSummary | None = None
+
+
+class CreateScan(BaseModel):
+    autorizacion_id: UUID
+
+
+class ScanCreated(BaseModel):
+    escaneo_id: str
+    estado: str
+    dominio: str
+
+
+class ScanSummary(BaseModel):
+    escaneo_id: str
+    estado: str
+    dominio: str
+    iniciado_en: str | None = None
+    finalizado_en: str | None = None
+    puntaje_global: int | None = None
+    es_parcial: bool | None = None
+
+
+class Finding(BaseModel):
+    id: str
+    regla_codigo: str | None = None
+    regla_nombre: str | None = None
+    descripcion: str | None = None
+    categoria: str
+    severidad: str
+    confianza: float
+    estado: str
+    activo_tipo: str | None = None
+    activo_valor: str | None = None
+    fuentes: list[str] = Field(default_factory=list)
+    evidencia: dict[str, Any] = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------
+# Cliente, autenticación y validación de alcance
+# ---------------------------------------------------------------------
 
 
 @lru_cache(maxsize=1)
@@ -92,21 +177,15 @@ def _scope_allows_domain(scope: str, domain: str) -> bool:
     return False
 
 
-def _execute(query: Any) -> Any:
-    try:
-        return query.execute().data
-    except Exception as error:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="No se pudo consultar o actualizar el estado del escaneo en Supabase",
-        ) from error
-
-
 async def _current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
 ) -> Any:
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(status_code=401, detail="Se requiere una sesión válida")
+    # Rechaza entradas como '1' antes de construir el cliente. Supabase verifica
+    # la autenticidad del JWT en get_user; este chequeo solo valida su estructura.
+    if len(credentials.credentials.split(".")) != 3 or not all(credentials.credentials.split(".")):
+        raise HTTPException(status_code=401, detail="Se requiere el access_token de una sesión de Supabase")
     try:
         client = _supabase_client()
     except RuntimeError as error:
@@ -122,19 +201,6 @@ async def _current_user(
     return response.user
 
 
-def _orchestrator_settings(settings: Settings) -> OrchestratorSettings:
-    return OrchestratorSettings(
-        shodan_api_key=settings.shodan_api_key,
-        theharvester_bin=settings.theharvester_bin,
-        theharvester_sources=settings.theharvester_sources,
-        spiderfoot_url=settings.spiderfoot_url,
-        request_timeout_seconds=settings.request_timeout_seconds,
-        process_timeout_seconds=settings.process_timeout_seconds,
-        spiderfoot_timeout_seconds=settings.spiderfoot_timeout_seconds,
-        spiderfoot_poll_seconds=settings.spiderfoot_poll_seconds,
-    )
-
-
 def _get_profile(client: Client, user_id: str, require_analyst: bool) -> dict[str, Any]:
     profile = _execute(
         client.table("usuarios")
@@ -142,32 +208,42 @@ def _get_profile(client: Client, user_id: str, require_analyst: bool) -> dict[st
         .eq("id", user_id)
         .maybe_single()
     )
-    if not profile or not profile.get("esta_activo"):
-        raise HTTPException(status_code=403, detail="El usuario no puede iniciar escaneos")
+    if not profile or not profile.get("esta_activo") or not profile.get("organizacion_id"):
+        raise HTTPException(status_code=403, detail="El usuario no tiene acceso a una organización activa")
     if require_analyst and profile.get("rol") not in {"admin", "analista"}:
-        raise HTTPException(status_code=403, detail="El usuario no puede iniciar escaneos")
+        raise HTTPException(status_code=403, detail="El usuario no tiene permiso para iniciar escaneos")
     return profile
 
 
 def _get_scan(
-    client: Client, user_id: str, organization_id: str, scan_id: str
+    client: Client,
+    user_id: str,
+    organization_id: str,
+    scan_id: str,
+    only_requester: bool = True,
 ) -> dict[str, Any]:
+    """Un escaneo se ve si es de tu organización; solo quien lo pidió puede ejecutarlo."""
     scan = _execute(
         client.table("escaneos")
-        .select("id, organizacion_id, solicitado_por, autorizacion_id, estado")
+        .select("id, organizacion_id, solicitado_por, autorizacion_id, estado, iniciado_en, finalizado_en")
         .eq("id", scan_id)
         .maybe_single()
     )
     if (
         not scan
-        or scan.get("solicitado_por") != user_id
         or scan.get("organizacion_id") != organization_id
+        or (only_requester and scan.get("solicitado_por") != user_id)
     ):
         raise HTTPException(status_code=404, detail="No se encontró el escaneo solicitado")
     return scan
 
 
 def _authorized_domain(client: Client, scan: dict[str, Any]) -> str:
+    """Valida la autorización (vigente, de la organización, con el dominio en su alcance).
+
+    El dominio que se escanea SIEMPRE es organizaciones.dominio_principal: nunca
+    viene del cliente.
+    """
     authorization = _execute(
         client.table("autorizaciones_dominio")
         .select("organizacion_id, alcance, expira_en, revocada_en")
@@ -212,7 +288,7 @@ def _verify_scope(
     require_pending: bool = True,
 ) -> tuple[dict[str, Any], str]:
     profile = _get_profile(client, user_id, require_pending)
-    scan = _get_scan(client, user_id, profile["organizacion_id"], scan_id)
+    scan = _get_scan(client, user_id, profile["organizacion_id"], scan_id, only_requester=require_pending)
     if not require_pending:
         return scan, ""
     if scan.get("estado") != "pendiente":
@@ -220,130 +296,98 @@ def _verify_scope(
     return scan, _authorized_domain(client, scan)
 
 
-def _start_scan(client: Client, scan_id: str, source_ids: dict[str, str]) -> None:
-    now = datetime.now(timezone.utc).isoformat()
-    claimed = _execute(
-        client.table("escaneos")
-        .update({"estado": "ejecutando", "iniciado_en": now})
-        .eq("id", scan_id)
-        .eq("estado", "pendiente")
-        .select("id")
-    )
-    if not claimed:
-        raise HTTPException(status_code=409, detail="El escaneo ya fue iniciado por otra solicitud")
-    rows = [
-        {
-            "escaneo_id": scan_id,
-            "fuente_id": source_ids[name],
-            "estado": "ejecutando",
-            "iniciado_en": now,
-        }
-        for name in SOURCE_NAMES
-    ]
-    _execute(
-        client.table("resultados_fuentes")
-        .upsert(rows, on_conflict="escaneo_id,fuente_id")
-    )
+# ---------------------------------------------------------------------
+# Construcción de respuestas
+# ---------------------------------------------------------------------
+
+_PENDIENTE = {"estado": "pendiente", "error": None, "resultado_crudo_id": None, "finalizado_en": None}
 
 
-def _persist_source(
-    client: Client,
-    organization_id: str,
-    scan_id: str,
-    source_id: str,
-    source_name: str,
-    domain: str,
-    outcome: dict[str, Any],
-) -> dict[str, Any]:
-    now = datetime.now(timezone.utc).isoformat()
-    summary = {
-        "resultado_crudo_id": None,
-        "ya_procesado": False,
-        "observaciones_generadas": 0,
-        "activos_nuevos": 0,
-        "activos_existentes": 0,
-        "observaciones_nuevas": 0,
-        "observaciones_duplicadas": 0,
-        "descartadas": {},
-    }
-    source_state = outcome["estado"]
-    error = outcome.get("error")
-    if source_state == "completado":
-        try:
-            summary = ingestar_resultado(
-                client,
-                organization_id=organization_id,
-                scan_id=scan_id,
-                source_id=source_id,
-                source=source_name,
-                raw=outcome["contenido"],
-                domain=domain,
-            )
-        except Exception:
-            source_state = "fallido"
-            error = "No se pudo normalizar o guardar el resultado de esta fuente"
-    status_data = {
-        **summary,
-        "estado": source_state,
-        "error": error,
-        "finalizado_en": now,
-    }
-    _execute(
-        client.table("resultados_fuentes")
-        .update(status_data)
-        .eq("escaneo_id", scan_id)
-        .eq("fuente_id", source_id)
-    )
-    return status_data
-
-
-def _finish_scan(client: Client, scan_id: str, scan_state: str) -> None:
-    _execute(
-        client.table("escaneos")
-        .update(
-            {
-                "estado": scan_state,
-                "finalizado_en": datetime.now(timezone.utc).isoformat(),
-            }
-        )
-        .eq("id", scan_id)
-    )
-
-
-def _source_ids(client: Client) -> dict[str, str]:
+def _source_results(client: Client, scan_id: str) -> dict[str, dict[str, Any]]:
     rows = _execute(
-        client.table("fuentes_osint")
-        .select("id, nombre")
-        .in_("nombre", list(SOURCE_NAMES))
-    ) or []
-    found = {row["nombre"]: row["id"] for row in rows}
-    missing = set(SOURCE_NAMES) - found.keys()
-    if missing:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Faltan fuentes en el catálogo de Supabase: {', '.join(sorted(missing))}",
+        client.table("resultados_fuentes")
+        .select(
+            "estado, error, resultado_crudo_id, iniciado_en, finalizado_en, ya_procesado, "
+            "observaciones_generadas, activos_nuevos, activos_existentes, "
+            "observaciones_nuevas, observaciones_duplicadas, descartadas, fuentes_osint(nombre)"
         )
-    return found
+        .eq("escaneo_id", scan_id)
+    ) or []
+    results: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if not row.get("fuentes_osint"):
+            continue
+        results[row["fuentes_osint"]["nombre"]] = {
+            key: row.get(key)
+            for key in (
+                "estado", "error", "resultado_crudo_id", "iniciado_en", "finalizado_en", "ya_procesado",
+                "observaciones_generadas", "activos_nuevos", "activos_existentes",
+                "observaciones_nuevas", "observaciones_duplicadas", "descartadas",
+            )
+            if row.get(key) is not None
+        }
+    for name in SOURCE_NAMES:
+        results.setdefault(name, dict(_PENDIENTE))
+    return results
 
 
-def _status_response(scan_id: str, scan_state: str, results: dict[str, dict[str, Any]]) -> ScanStatus:
+def _status_response(
+    scan_id: str,
+    scan_state: str,
+    results: dict[str, dict[str, Any]],
+    **extra: Any,
+) -> ScanStatus:
     return ScanStatus(
         escaneo_id=scan_id,
         estado=scan_state,
-        fuentes=[
-            SourceStatus(fuente=name, **results[name])
-            for name in SOURCE_NAMES
-        ],
+        fuentes=[SourceStatus(fuente=name, **results[name]) for name in SOURCE_NAMES],
+        mensaje=scan_message(scan_state, results),
+        fuentes_ok=[n for n in SOURCE_NAMES if results[n].get("estado") == "completado"],
+        fuentes_fallidas=[n for n in SOURCE_NAMES if results[n].get("estado") == "fallido"],
+        **extra,
     )
 
 
-app = FastAPI(title="BaxterSec OSINT API", version="0.1.0")
+def _organization_domain(client: Client, organization_id: str) -> str | None:
+    row = _execute(
+        client.table("organizaciones").select("dominio_principal").eq("id", organization_id).maybe_single()
+    )
+    return row["dominio_principal"] if row else None
+
+
+def _risk_or_none(client: Client, scan_id: str) -> RiskSummary | None:
+    riesgo = leer_riesgo(client, scan_id)
+    return RiskSummary(**riesgo) if riesgo else None
+
+
+# ---------------------------------------------------------------------
+# Aplicación
+# ---------------------------------------------------------------------
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Al arrancar, cierra escaneos que quedaron 'ejecutando' por un reinicio anterior."""
+    try:
+        settings = get_settings()
+        cerrados = await run_in_threadpool(
+            reap_stuck_scans, _supabase_client(), settings.scan_timeout_seconds + 600
+        )
+        if cerrados:
+            logger.warning("Se cerraron %s escaneos interrumpidos", cerrados)
+    except Exception:
+        logger.warning("No se pudo revisar si había escaneos interrumpidos", exc_info=True)
+    yield
+
+
+app = FastAPI(title="BaxterSec OSINT API", version="0.2.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         origin.strip()
         for origin in os.getenv(
-            "CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+            "CORS_ORIGINS",
+            "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173",
         ).split(",")
         if origin.strip()
     ],
@@ -353,95 +397,214 @@ app.add_middleware(
 )
 
 
+def get_runners() -> dict[str, Runner] | None:
+    """None = las cuatro fuentes reales. Las pruebas lo sobrescriben con fuentes falsas."""
+    return None
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"estado": "disponible"}
 
 
-@app.post("/api/escaneos/{scan_id}/ejecutar")
+@app.post("/api/escaneos", status_code=201, response_model=ScanCreated)
+async def create_scan(
+    body: CreateScan,
+    user: Annotated[Any, Depends(_current_user)],
+) -> ScanCreated:
+    """Crea un escaneo 'pendiente' para tu organización, con una autorización vigente."""
+    client = _supabase_client()
+    profile = await run_in_threadpool(_get_profile, client, str(user.id), True)
+    organization_id = profile["organizacion_id"]
+    authorization_id = str(body.autorizacion_id)
+    domain = await run_in_threadpool(
+        _authorized_domain, client, {"organizacion_id": organization_id, "autorizacion_id": authorization_id}
+    )
+    created = await run_in_threadpool(
+        _execute,
+        client.table("escaneos").insert(
+            {
+                "organizacion_id": organization_id,
+                "solicitado_por": str(user.id),
+                "autorizacion_id": authorization_id,
+                "estado": "pendiente",
+            }
+        ),
+    )
+    await run_in_threadpool(
+        audit,
+        client,
+        user_id=str(user.id),
+        organization_id=organization_id,
+        action="escaneo_creado",
+        scan_id=created[0]["id"],
+        detail={"dominio": domain, "autorizacion_id": authorization_id},
+    )
+    return ScanCreated(escaneo_id=created[0]["id"], estado="pendiente", dominio=domain)
+
+
+@app.get("/api/escaneos", response_model=list[ScanSummary])
+async def list_scans(
+    user: Annotated[Any, Depends(_current_user)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> list[ScanSummary]:
+    """Historial de escaneos de tu organización, del más reciente al más antiguo."""
+    client = _supabase_client()
+    profile = await run_in_threadpool(_get_profile, client, str(user.id), False)
+    organization_id = profile["organizacion_id"]
+    domain = await run_in_threadpool(_organization_domain, client, organization_id) or ""
+    rows = await run_in_threadpool(
+        _execute,
+        client.table("escaneos")
+        .select("id, estado, iniciado_en, finalizado_en, puntajes_riesgo(puntaje_global, es_parcial)")
+        .eq("organizacion_id", organization_id)
+        .order("iniciado_en", desc=True, nullsfirst=True)
+        .limit(limit),
+    ) or []
+    summaries = []
+    for row in rows:
+        score = row.get("puntajes_riesgo")
+        if isinstance(score, list):  # según cómo infiera PostgREST la relación
+            score = score[0] if score else None
+        summaries.append(
+            ScanSummary(
+                escaneo_id=row["id"],
+                estado=row["estado"],
+                dominio=domain,
+                iniciado_en=row.get("iniciado_en"),
+                finalizado_en=row.get("finalizado_en"),
+                puntaje_global=score["puntaje_global"] if score else None,
+                es_parcial=score["es_parcial"] if score else None,
+            )
+        )
+    return summaries
+
+
+@app.post("/api/escaneos/{scan_id}/ejecutar", status_code=202, response_model=ScanStatus)
 async def execute_scan(
     scan_id: UUID,
+    background: BackgroundTasks,
     user: Annotated[Any, Depends(_current_user)],
+    runners: Annotated[dict[str, Runner] | None, Depends(get_runners)],
 ) -> ScanStatus:
+    """Inicia el escaneo y responde de inmediato (202).
+
+    Las cuatro fuentes corren en segundo plano. Consulta `GET /api/escaneos/{id}`
+    para ver el avance y, al final, qué fuentes fallaron y cuáles no.
+    """
     settings = get_settings()
     client = _supabase_client()
     scan_id_text = str(scan_id)
-    scan, domain = await run_in_threadpool(
-        _verify_scope, client, str(user.id), scan_id_text
-    )
+    scan, domain = await run_in_threadpool(_verify_scope, client, str(user.id), scan_id_text)
     source_ids = await run_in_threadpool(_source_ids, client)
     await run_in_threadpool(_start_scan, client, scan_id_text, source_ids)
 
-    outcomes = await run_all(domain, _orchestrator_settings(settings))
-    persisted: dict[str, dict[str, Any]] = {}
-    for name in SOURCE_NAMES:
-        try:
-            persisted[name] = await run_in_threadpool(
-                _persist_source,
-                client,
-                scan["organizacion_id"],
-                scan_id_text,
-                source_ids[name],
-                name,
-                domain,
-                outcomes[name],
-            )
-        except Exception:
-            persisted[name] = {
-                "estado": "fallido",
-                "error": "No se pudo persistir el resultado de esta fuente",
-                "resultado_crudo_id": None,
-                "finalizado_en": datetime.now(timezone.utc).isoformat(),
-            }
+    background.add_task(run_scan_job, client, settings, scan, source_ids, domain, runners)
+    running = {name: {"estado": "ejecutando"} for name in SOURCE_NAMES}
+    return _status_response(scan_id_text, "ejecutando", running, dominio=domain)
 
-    scan_state = (
-        "completado"
-        if all(result["estado"] == "completado" for result in persisted.values())
-        else "incompleto"
+
+@app.get("/api/escaneos/{scan_id}", response_model=ScanStatus)
+async def get_scan(
+    scan_id: UUID,
+    user: Annotated[Any, Depends(_current_user)],
+) -> ScanStatus:
+    """Estado del escaneo, de cada fuente (cuál falló y cuál no) y el riesgo si ya se calculó."""
+    client = _supabase_client()
+    scan, _ = await run_in_threadpool(_verify_scope, client, str(user.id), str(scan_id), False)
+    results = await run_in_threadpool(_source_results, client, str(scan_id))
+    domain = await run_in_threadpool(_organization_domain, client, scan["organizacion_id"])
+    risk = await run_in_threadpool(_risk_or_none, client, str(scan_id))
+    return _status_response(
+        str(scan_id),
+        scan["estado"],
+        results,
+        dominio=domain,
+        iniciado_en=scan.get("iniciado_en"),
+        finalizado_en=scan.get("finalizado_en"),
+        riesgo=risk,
     )
-    await run_in_threadpool(_finish_scan, client, scan_id_text, scan_state)
-    return _status_response(scan_id_text, scan_state, persisted)
 
 
-@app.get("/api/escaneos/{scan_id}/fuentes")
+@app.get("/api/escaneos/{scan_id}/fuentes", response_model=ScanStatus)
 async def get_scan_sources(
     scan_id: UUID,
     user: Annotated[Any, Depends(_current_user)],
 ) -> ScanStatus:
     client = _supabase_client()
-    scan, _ = await run_in_threadpool(
-        _verify_scope, client, str(user.id), str(scan_id), False
-    )
-    rows = await run_in_threadpool(
-        _execute,
-        client.table("resultados_fuentes")
-        .select(
-            "estado, error, resultado_crudo_id, finalizado_en, ya_procesado, "
-            "observaciones_generadas, activos_nuevos, activos_existentes, "
-            "observaciones_nuevas, observaciones_duplicadas, descartadas, fuentes_osint(nombre)"
-        )
-        .eq("escaneo_id", str(scan_id)),
-    ) or []
-    results = {
-        row["fuentes_osint"]["nombre"]: {
-            "estado": row["estado"],
-            "error": row.get("error"),
-            "resultado_crudo_id": row.get("resultado_crudo_id"),
-            "finalizado_en": row.get("finalizado_en"),
-            "ya_procesado": row.get("ya_procesado", False),
-            "observaciones_generadas": row.get("observaciones_generadas", 0),
-            "activos_nuevos": row.get("activos_nuevos", 0),
-            "activos_existentes": row.get("activos_existentes", 0),
-            "observaciones_nuevas": row.get("observaciones_nuevas", 0),
-            "observaciones_duplicadas": row.get("observaciones_duplicadas", 0),
-            "descartadas": row.get("descartadas", {}),
-        }
-        for row in rows
-        if row.get("fuentes_osint")
-    }
-    for name in SOURCE_NAMES:
-        results.setdefault(
-            name,
-            {"estado": "pendiente", "error": None, "resultado_crudo_id": None, "finalizado_en": None},
-        )
+    scan, _ = await run_in_threadpool(_verify_scope, client, str(user.id), str(scan_id), False)
+    results = await run_in_threadpool(_source_results, client, str(scan_id))
     return _status_response(str(scan_id), scan["estado"], results)
+
+
+@app.get("/api/escaneos/{scan_id}/hallazgos", response_model=list[Finding])
+async def get_findings(
+    scan_id: UUID,
+    user: Annotated[Any, Depends(_current_user)],
+) -> list[Finding]:
+    """Hallazgos del escaneo, de mayor a menor severidad."""
+    client = _supabase_client()
+    await run_in_threadpool(_verify_scope, client, str(user.id), str(scan_id), False)
+    rows = await run_in_threadpool(leer_hallazgos, client, str(scan_id))
+    findings = []
+    for row in rows:
+        rule = row.get("reglas_riesgo") or {}
+        asset = row.get("activos") or {}
+        evidence = row.get("evidencia") or {}
+        findings.append(
+            Finding(
+                id=row["id"],
+                regla_codigo=rule.get("codigo"),
+                regla_nombre=rule.get("nombre"),
+                descripcion=rule.get("descripcion"),
+                categoria=row["categoria"],
+                severidad=row["severidad"],
+                confianza=float(row["confianza"]),
+                estado=row["estado"],
+                activo_tipo=asset.get("tipo"),
+                activo_valor=asset.get("valor"),
+                fuentes=evidence.get("fuentes") or [n for n in [(row.get("fuentes_osint") or {}).get("nombre")] if n],
+                evidencia=evidence,
+            )
+        )
+    return findings
+
+
+@app.get("/api/escaneos/{scan_id}/riesgo", response_model=RiskSummary)
+async def get_risk(
+    scan_id: UUID,
+    user: Annotated[Any, Depends(_current_user)],
+) -> RiskSummary:
+    client = _supabase_client()
+    await run_in_threadpool(_verify_scope, client, str(user.id), str(scan_id), False)
+    risk = await run_in_threadpool(_risk_or_none, client, str(scan_id))
+    if risk is None:
+        raise HTTPException(status_code=404, detail="El riesgo de este escaneo aún no se ha calculado")
+    return risk
+
+
+@app.post("/api/escaneos/{scan_id}/riesgo/recalcular", response_model=RiskSummary)
+async def recalculate_risk(
+    scan_id: UUID,
+    user: Annotated[Any, Depends(_current_user)],
+) -> RiskSummary:
+    """Recalcula hallazgos y puntajes con las observaciones ya guardadas (sin volver a escanear).
+
+    Útil después de ajustar pesos en `reglas_riesgo` o de corregir un fallo del motor.
+    """
+    client = _supabase_client()
+    profile = await run_in_threadpool(_get_profile, client, str(user.id), True)
+    scan = await run_in_threadpool(
+        _get_scan, client, str(user.id), profile["organizacion_id"], str(scan_id), False
+    )
+    if scan["estado"] not in ESTADOS_FINALES:
+        raise HTTPException(status_code=409, detail="El escaneo aún no ha terminado")
+    try:
+        await run_in_threadpool(calcular_y_guardar, client, str(scan_id))
+    except Exception as error:
+        logger.exception("No se pudo recalcular el riesgo del escaneo %s", scan_id)
+        raise HTTPException(status_code=502, detail="No se pudo calcular el riesgo del escaneo") from error
+    risk = await run_in_threadpool(_risk_or_none, client, str(scan_id))
+    if risk is None:  # no debería ocurrir: acabamos de guardarlo
+        raise HTTPException(status_code=502, detail="No se pudo leer el riesgo calculado")
+    return risk

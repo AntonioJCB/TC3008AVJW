@@ -23,6 +23,10 @@ class Settings:
     process_timeout_seconds: float
     spiderfoot_timeout_seconds: float
     spiderfoot_poll_seconds: float
+    scan_timeout_seconds: float
+    crtsh_retries: int
+    shodan_max_ips: int
+    shodan_pause_seconds: float
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -31,6 +35,18 @@ class Settings:
         if not supabase_url or not service_key or service_key.lower().startswith("replace-"):
             raise RuntimeError(
                 "Configura SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY en backend/.env"
+            )
+        if service_key.startswith("sb_publishable_"):
+            raise RuntimeError(
+                "SUPABASE_SERVICE_ROLE_KEY contiene una llave pública. Configura la "
+                "llave legacy service_role del mismo proyecto en backend/.env; "
+                "la llave pública solo corresponde al frontend."
+            )
+        if service_key.startswith("sb_secret_"):
+            raise RuntimeError(
+                "La versión instalada de supabase-py (2.15.3) requiere una llave JWT "
+                "legacy service_role. Configúrala en SUPABASE_SERVICE_ROLE_KEY; "
+                "las llaves sb_secret_ requieren actualizar y validar el SDK."
             )
 
         shodan_api_key = os.getenv("SHODAN_API_KEY", "").strip()
@@ -54,6 +70,11 @@ class Settings:
                 os.getenv("SPIDERFOOT_TIMEOUT_SECONDS", "1800")
             ),
             spiderfoot_poll_seconds=float(os.getenv("SPIDERFOOT_POLL_SECONDS", "3")),
+            # Tiempo máximo por fuente; debe ser mayor que SPIDERFOOT_TIMEOUT_SECONDS.
+            scan_timeout_seconds=float(os.getenv("SCAN_TIMEOUT_SECONDS", "2100")),
+            crtsh_retries=int(os.getenv("CRTSH_RETRIES", "3")),
+            shodan_max_ips=int(os.getenv("SHODAN_MAX_IPS", "10")),
+            shodan_pause_seconds=float(os.getenv("SHODAN_PAUSE_SECONDS", "1.1")),
         )
 
 

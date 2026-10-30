@@ -6,6 +6,16 @@ from app.settings import Settings
 
 
 class SettingsTests(unittest.TestCase):
+    def test_llaves_incompatibles_dan_instrucciones_sin_exponer_el_secreto(self):
+        for key, message in [("sb_publishable_prueba", "llave pública"), ("sb_secret_prueba", "legacy service_role")]:
+            with self.subTest(key=key), patch.dict(os.environ, {
+                "SUPABASE_URL": "https://example.supabase.co",
+                "SUPABASE_SERVICE_ROLE_KEY": key,
+            }, clear=True):
+                with self.assertRaisesRegex(RuntimeError, message) as error:
+                    Settings.from_environment()
+                self.assertNotIn(key, str(error.exception))
+
     def test_shodan_placeholder_is_not_treated_as_configured(self) -> None:
         with patch.dict(
             os.environ,

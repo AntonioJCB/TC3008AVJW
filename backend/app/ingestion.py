@@ -56,7 +56,6 @@ def _save_raw_result(
             on_conflict="escaneo_id,fuente_id,hash_contenido",
             ignore_duplicates=True,
         )
-        .select("id, estado")
     ) or []
     if inserted:
         return str(inserted[0]["id"]), str(inserted[0].get("estado") or "pendiente")

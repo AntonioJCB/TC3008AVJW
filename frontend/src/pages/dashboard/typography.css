@@ -4,12 +4,15 @@
   --type-organization: clamp(23px, 1.9vw, 28px);
   --type-section: 18px;
   --type-panel: 19px;
-  --type-body: 13px;
-  --type-secondary: 12px;
-  --type-label: 11px;
-  --type-kpi: 26px;
-  --type-kpi-label: 11px;
-  --type-kpi-note: 11px;
+  --type-body: 14px;
+  --type-secondary: 13px;
+  --type-label: 12px;
+  --type-kpi: 31px;
+  --type-kpi-compact: 29px;
+  --type-count: 14px;
+  --type-fact: 17px;
+  --type-kpi-label: 12px;
+  --type-kpi-note: 12px;
   --weight-title: 700;
   --weight-emphasis: 650;
   font-family: system-ui, "Segoe UI", sans-serif;
@@ -40,9 +43,12 @@
 }
 .proposal-dashboard .proposal-topbar .new-analysis-button b { font-weight: var(--weight-title); }
 .proposal-dashboard .sidebar .brand { font-size: 17px; font-weight: var(--weight-title); }
-.proposal-dashboard .sidebar .nav-label { font-size: 10px; font-weight: var(--weight-title); }
+.proposal-dashboard .sidebar .nav-label { font-size: 11px; font-weight: var(--weight-title); }
 .proposal-dashboard .sidebar .nav-item { font-size: var(--type-body); }
 .proposal-dashboard .sidebar-foot strong { font-size: var(--type-secondary); font-weight: var(--weight-emphasis); }
+.proposal-dashboard .sidebar-foot span { font-size: var(--type-label); }
+.proposal-dashboard .sidebar-foot .avatar { font-size: var(--type-secondary); }
+.proposal-dashboard .sidebar .brand-mark small { font-size: 10px; }
 
 /* Encabezados y texto de apoyo equivalentes entre pantallas. */
 .proposal-dashboard :is(.asset-inventory-header h3, .source-inventory-header h2, .finding-queue-toolbar h2, .history-log-toolbar h2) {
@@ -57,7 +63,7 @@
   font-size: var(--type-secondary);
 }
 .proposal-dashboard .history-chart-heading h2 {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: var(--weight-title);
 }
 .proposal-dashboard .source-card-heading h2 {
@@ -84,6 +90,7 @@
   font-size: var(--type-kpi);
   font-weight: var(--weight-title);
   line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 .proposal-dashboard :is(.asset-kpi, .source-kpi, .finding-kpi, .history-kpi) > small {
   padding-top: 4px;
@@ -99,21 +106,80 @@
   font-weight: var(--weight-title);
 }
 .proposal-dashboard .relation-metric > strong {
-  font-size: 24px;
+  font-size: var(--type-kpi-compact);
   font-weight: var(--weight-title);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Números especiales del Resumen conservan su jerarquía sin crecer como titulares. */
-.proposal-dashboard .overview-screen .proposal-score-ring strong { font-size: 38px; font-weight: var(--weight-title); }
+.proposal-dashboard .overview-screen .proposal-score-ring strong { font-size: 43px; font-weight: var(--weight-title); }
 .proposal-dashboard .overview-screen .summary-numbers strong { font-size: var(--type-kpi); font-weight: var(--weight-title); }
-.proposal-dashboard .overview-screen .summary-highlights strong { font-size: 19px; font-weight: var(--weight-title); }
+.proposal-dashboard .overview-screen .summary-highlights strong { font-size: 22px; font-weight: var(--weight-title); }
+
+/* Cifras de filtros, tablas, paneles y gráficas: un paso más legibles que su texto de apoyo. */
+.proposal-dashboard :is(.asset-filter-tabs, .source-filters, .finding-filters, .history-filters) button span {
+  font-size: var(--type-count);
+  font-variant-numeric: tabular-nums;
+}
+.proposal-dashboard :is(.asset-filter-tabs, .source-filters, .finding-filters, .history-filters) button { font-size: var(--type-secondary); }
+.proposal-dashboard :is(.asset-source-count, .source-record-cell strong, .history-entry-cell strong[class^="history-impact-"]) {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.proposal-dashboard .asset-detail-metrics strong { font-size: 20px; font-variant-numeric: tabular-nums; }
+.proposal-dashboard .source-quality-facts strong {
+  font-size: var(--type-fact);
+  font-variant-numeric: tabular-nums;
+}
+.proposal-dashboard .history-deltas dd { font-size: 15px; font-variant-numeric: tabular-nums; }
+.proposal-dashboard :is(.asset-quality-grid strong, .source-normalization-facts strong, .source-coverage-row > strong) {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.proposal-dashboard .source-card-heading > strong {
+  font-size: 21px;
+  font-variant-numeric: tabular-nums;
+}
+.proposal-dashboard .priority-routes-heading > strong { font-size: 23px; font-variant-numeric: tabular-nums; }
+.proposal-dashboard .asset-quality-heading > strong {
+  font-size: 23px;
+  font-variant-numeric: tabular-nums;
+}
+.proposal-dashboard .finding-impact strong {
+  font-size: 27px;
+  font-variant-numeric: tabular-nums;
+}
+.proposal-dashboard .relation-impact strong { font-size: 21px; font-variant-numeric: tabular-nums; }
+.proposal-dashboard .history-score-comparison strong { font-size: 34px; font-variant-numeric: tabular-nums; }
+.proposal-dashboard :is(.overview-screen .severity-bar-row strong, .overview-screen .inventory-bar-row strong, .overview-screen .sources-foot strong, .overview-screen .factor-row strong) {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.proposal-dashboard .overview-screen .chart-value { font-size: 13px; }
+.proposal-dashboard .history-chart-value { font-size: 14px; }
+.proposal-dashboard .overview-screen .axis-label { font-size: 12px; }
+.proposal-dashboard :is(.history-grid-lines text, .history-chart-date) { font-size: 13px; }
+.proposal-dashboard .relation-graph-controls output { font-size: 14px; }
+.proposal-dashboard .priority-routes-list button > span:first-child { font-size: 15px; }
+
+/* Texto de apoyo que seguía demasiado pequeño en las distintas pantallas. */
+.proposal-dashboard .overview-screen .card-heading h3 { font-size: var(--type-body); }
+.proposal-dashboard :is(.overview-screen .risk-change, .overview-screen .factor-row, .overview-screen .calculation-note, .overview-screen .summary-numbers span, .overview-screen .summary-highlights span, .overview-screen .milestone small, .overview-screen .trend-ranges button, .asset-quality-grid span, .source-quality-facts span, .source-normalization-facts span, .finding-trace dt, .history-score-comparison span, .history-score-comparison small, .history-deltas dt, .history-dominant-change small, .finding-status, .source-status) {
+  font-size: var(--type-label);
+}
+.proposal-dashboard :is(.overview-screen .card-heading small, .overview-screen .severity-bar-row, .overview-screen .inventory-bar-row, .overview-screen .milestone p, .selected-asset-card p, .asset-detail-metrics span, .asset-coverage, .source-coverage-row, .finding-trace dd, .finding-impact, .history-chart-heading p, .history-range button, .relation-legend, .relation-facts dt, .relation-facts dd, .priority-routes-list small) {
+  font-size: var(--type-secondary);
+}
+.proposal-dashboard :is(.overview-screen .source-health-row, .overview-screen .priority-table td, .overview-screen .card-heading a, .source-quality p, .finding-insights-description, .history-comparison > p) {
+  font-size: var(--type-body);
+}
 
 /* Listados: valor principal, apoyo y acciones siguen una misma escala. */
-.proposal-dashboard :is(.source-record-cell strong, .finding-record-cell strong, .history-entry-date strong, .history-entry-change strong, .history-entry-cell strong, .relation-node strong) {
+.proposal-dashboard :is(.finding-record-cell strong, .history-entry-date strong, .history-entry-change strong, .history-entry-cell strong, .relation-node strong) {
   font-size: var(--type-body);
   font-weight: var(--weight-emphasis);
 }
-.proposal-dashboard .asset-observed { font-size: 14px; font-weight: var(--weight-emphasis); }
+.proposal-dashboard .asset-observed { font-size: 15px; font-weight: var(--weight-emphasis); }
 .proposal-dashboard .asset-type,
 .proposal-dashboard .asset-exposure { font-size: var(--type-body); font-weight: var(--weight-emphasis); }
 .proposal-dashboard :is(.asset-secondary, .source-record-cell small, .finding-record-cell small, .history-entry-date small, .history-entry-change small, .history-entry-cell small, .relation-node small) {
@@ -123,14 +189,15 @@
   font-size: var(--type-body);
   font-weight: var(--weight-title);
 }
+.proposal-dashboard .finding-confidence strong { font-size: 16px; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 650px) {
   .proposal-dashboard :is(.asset-kpi, .source-kpi, .finding-kpi, .history-kpi) {
     min-height: 94px;
     padding: 13px;
   }
-  .proposal-dashboard :is(.asset-kpi, .source-kpi, .finding-kpi, .history-kpi) > strong { font-size: 24px; }
-  .proposal-dashboard .relation-metric > strong { font-size: 23px; }
+  .proposal-dashboard :is(.asset-kpi, .source-kpi, .finding-kpi, .history-kpi) > strong { font-size: 28px; }
+  .proposal-dashboard .relation-metric > strong { font-size: 27px; }
   .proposal-dashboard .proposal-topbar .org-title h1 { font-size: 20px; }
   .proposal-dashboard .proposal-topbar .new-analysis-button { width: 42px; min-width: 42px; padding: 0; font-size: 0; }
 }

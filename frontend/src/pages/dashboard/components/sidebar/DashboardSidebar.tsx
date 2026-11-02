@@ -1,8 +1,11 @@
-import { NavLink } from 'react-router'
+import { LogOut } from 'lucide-react'
+import { NavLink, useNavigate } from 'react-router'
 import { navigation, navigationGroups } from '../../navigation'
 import './sidebar.css'
 
 export default function DashboardSidebar() {
+  const navigate = useNavigate()
+
   return (
     <aside className="sidebar" aria-label="Navegación principal">
       <div className="brand">
@@ -32,7 +35,16 @@ export default function DashboardSidebar() {
 
       <div className="sidebar-foot">
         <div className="avatar" aria-hidden="true">TC</div>
-        <div><strong>Analista OSINT</strong><span>Acceso autorizado</span></div>
+        <div className="sidebar-profile"><strong>Analista OSINT</strong><span>Acceso autorizado</span></div>
+        <button
+          className="sidebar-exit"
+          type="button"
+          title="Salir del portal"
+          aria-label="Salir del portal"
+          onClick={() => navigate('/login', { replace: true })}
+        >
+          <LogOut size={17} strokeWidth={1.8} aria-hidden="true" />
+        </button>
       </div>
     </aside>
   )

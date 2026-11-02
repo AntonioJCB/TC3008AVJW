@@ -30,6 +30,30 @@
   letter-spacing: -.04em;
 }
 
+.proposal-dashboard .sidebar-exit {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color .18s ease, background-color .18s ease, color .18s ease;
+}
+.proposal-dashboard .sidebar-exit:hover {
+  border-color: var(--coral);
+  background: var(--theme-surface-alt);
+  color: var(--coral);
+}
+.proposal-dashboard .sidebar-exit:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
 .proposal-dashboard .sidebar .brand-mark {
   position: relative;
   display: grid;
@@ -165,6 +189,15 @@
   border-top: 1px solid var(--line-soft);
 }
 
+.proposal-dashboard .sidebar-profile {
+  flex: 1;
+  min-width: 0;
+}
+
+.proposal-dashboard .sidebar-foot .sidebar-exit {
+  margin-left: auto;
+}
+
 .proposal-dashboard .sidebar-foot .avatar {
   display: grid;
   flex: none;
@@ -206,16 +239,17 @@
     border-right: 0;
     border-bottom: 1px solid var(--line-soft);
   }
-  .proposal-dashboard .sidebar .brand { margin: 0 10px 12px; }
+  .proposal-dashboard .sidebar .brand { margin-bottom: 12px; }
   .proposal-dashboard .sidebar nav { display: flex; gap: 6px; overflow-x: auto; }
   .proposal-dashboard .sidebar .nav-group { display: flex; flex: none; gap: 4px; }
   .proposal-dashboard .sidebar .nav-group + .nav-group { margin-top: 0; }
-  .proposal-dashboard .sidebar .nav-label,
-  .proposal-dashboard .sidebar-foot { display: none; }
+  .proposal-dashboard .sidebar .nav-label { display: none; }
+  .proposal-dashboard .sidebar-foot { margin-top: 12px; padding: 10px 10px 0; }
   .proposal-dashboard .sidebar .nav-item { width: auto; min-height: 38px; padding: 8px 10px; font-size: 12px; }
   .proposal-dashboard .sidebar .nav-icon { width: 15px; font-size: 15px; }
   .proposal-dashboard .sidebar .nav-item.active::before { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .proposal-dashboard .sidebar .nav-item { transition: none; }
+  .proposal-dashboard .sidebar .nav-item,
+  .proposal-dashboard .sidebar-exit { transition: none; }
 }

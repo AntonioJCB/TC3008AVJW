@@ -5,13 +5,12 @@ import LoginStory from './components/LoginStory'
 import './login.css'
 
 export default function LoginPage() {
-  useEffect(() => { document.title = 'BaxterSec · Acceso demo' }, [])
+  useEffect(() => { document.title = 'BaxterSec · Acceso' }, [])
 
   return (
     <div className="site-shell login-shell">
       <header className="site-header">
         <Brand />
-        <div className="secure-label"><span aria-hidden="true" />Entorno de demostración</div>
       </header>
       <main className="page-content">
         <section className="login-card" aria-labelledby="login-title">
@@ -20,8 +19,7 @@ export default function LoginPage() {
         </section>
       </main>
       <footer className="site-footer">
-        <span>Prototipo académico con datos ficticios.</span>
-        <span>© BaxterSec · Portal de demostración</span>
+        <span>© BaxterSec</span>
       </footer>
     </div>
   )

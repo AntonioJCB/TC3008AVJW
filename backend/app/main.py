@@ -17,12 +17,14 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 from supabase import Client, create_client
 
+from app.api.router import api_router
 from app.orchestrators import Runner, run_all  # noqa: F401  (run_all se re-exporta para las pruebas)
 from app.risk.persistencia import calcular_y_guardar, leer_hallazgos, leer_riesgo
 from app.scan_service import (  # noqa: F401  (se re-exportan los helpers con su nombre histórico)
     ESTADOS_FINALES,
     SOURCE_NAMES,
     audit,
+    cancel_scan as cancel_scan_job,
     _execute,
     _finish_scan,
     _persist_source,
@@ -30,6 +32,7 @@ from app.scan_service import (  # noqa: F401  (se re-exportan los helpers con su
     _start_scan,
     compute_scan_state,
     reap_stuck_scans,
+    register_scan_control,
     run_scan_job,
     scan_message,
 )
@@ -81,6 +84,7 @@ class RiskSummary(BaseModel):
 class ScanStatus(BaseModel):
     escaneo_id: str
     estado: str
+    puede_detener: bool = False
     fuentes: list[SourceStatus]
     #: Frase lista para mostrar: qué fuentes fallaron y cuáles no.
     mensaje: str = ""
@@ -125,6 +129,12 @@ class Finding(BaseModel):
     activo_valor: str | None = None
     fuentes: list[str] = Field(default_factory=list)
     evidencia: dict[str, Any] = Field(default_factory=dict)
+
+
+class InviteClientUser(BaseModel):
+    nombre: str = Field(min_length=2, max_length=120)
+    correo: str = Field(min_length=3, max_length=254)
+    rol: str
 
 
 # ---------------------------------------------------------------------
@@ -210,6 +220,14 @@ def _get_profile(client: Client, user_id: str, require_analyst: bool) -> dict[st
     )
     if not profile or not profile.get("esta_activo") or not profile.get("organizacion_id"):
         raise HTTPException(status_code=403, detail="El usuario no tiene acceso a una organización activa")
+    organization = _execute(
+        client.table("organizaciones")
+        .select("esta_activa, archivada_en")
+        .eq("id", profile["organizacion_id"])
+        .maybe_single()
+    )
+    if not organization or not organization.get("esta_activa") or organization.get("archivada_en"):
+        raise HTTPException(status_code=403, detail="La organización está deshabilitada o archivada")
     if require_analyst and profile.get("rol") not in {"admin", "analista"}:
         raise HTTPException(status_code=403, detail="El usuario no tiene permiso para iniciar escaneos")
     return profile
@@ -340,6 +358,7 @@ def _status_response(
     return ScanStatus(
         escaneo_id=scan_id,
         estado=scan_state,
+        puede_detener=scan_state == "ejecutando",
         fuentes=[SourceStatus(fuente=name, **results[name]) for name in SOURCE_NAMES],
         mensaje=scan_message(scan_state, results),
         fuentes_ok=[n for n in SOURCE_NAMES if results[n].get("estado") == "completado"],
@@ -381,6 +400,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="BaxterSec OSINT API", version="0.2.0", lifespan=lifespan)
+app.include_router(api_router, prefix="/api/v1")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -405,6 +425,55 @@ def get_runners() -> dict[str, Runner] | None:
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"estado": "disponible"}
+
+
+@app.post("/api/admin/clientes/{organization_id}/usuarios/invitar", status_code=201)
+async def invite_client_user(
+    organization_id: UUID,
+    body: InviteClientUser,
+    user: Any = Depends(_current_user),
+) -> dict[str, str]:
+    """Invita desde Auth sin exponer la llave de servicio al navegador."""
+    name = body.nombre.strip()
+    email = body.correo.strip().lower()
+    if len(name) < 2 or body.rol not in {"admin", "analista", "lector"} or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+        raise HTTPException(status_code=422, detail="Datos de usuario inválidos")
+    client = _supabase_client()
+    profile = _execute(client.table("usuarios").select("esta_activo").eq("id", str(user.id)).maybe_single())
+    admin = _execute(client.table("administradores_plataforma").select("usuario_id").eq("usuario_id", str(user.id)).maybe_single())
+    if not profile or not profile.get("esta_activo") or not admin:
+        raise HTTPException(status_code=403, detail="Solo un administrador de plataforma puede invitar usuarios")
+    organization = _execute(client.table("organizaciones").select("esta_activa, archivada_en").eq("id", str(organization_id)).maybe_single())
+    if not organization or not organization.get("esta_activa") or organization.get("archivada_en"):
+        raise HTTPException(status_code=400, detail="El cliente no está activo")
+    try:
+        invitation = await run_in_threadpool(
+            client.auth.admin.invite_user_by_email,
+            email,
+            {"redirect_to": f"{get_settings().frontend_url}/restablecer-clave", "data": {"nombre": name}},
+        )
+    except Exception as error:
+        logger.warning("No se pudo invitar un usuario al cliente %s", organization_id, exc_info=True)
+        raise HTTPException(status_code=400, detail="No se pudo enviar la invitación. Revisa el correo y la configuración de Supabase Auth") from error
+    invited = invitation.user
+    if invited is None:
+        raise HTTPException(status_code=502, detail="Supabase Auth no devolvió la cuenta invitada")
+    assigned = _execute(
+        client.table("usuarios").update({
+            "nombre": name, "organizacion_id": str(organization_id), "rol": body.rol,
+        }).eq("id", str(invited.id)).is_("organizacion_id", "null")
+    )
+    if not assigned:
+        raise HTTPException(status_code=502, detail="La invitación se envió, pero la cuenta quedó pendiente de asignación")
+    try:
+        _execute(client.table("bitacora_auditoria").insert({
+            "usuario_id": str(user.id), "organizacion_id": str(organization_id),
+            "accion": "invitar", "entidad": "usuarios", "entidad_id": str(invited.id),
+            "detalle": {"rol": body.rol},
+        }))
+    except HTTPException:
+        logger.warning("No se pudo registrar la invitación en la bitácora", exc_info=True)
+    return {"id": str(invited.id)}
 
 
 @app.post("/api/escaneos", status_code=201, response_model=ScanCreated)
@@ -499,9 +568,37 @@ async def execute_scan(
     source_ids = await run_in_threadpool(_source_ids, client)
     await run_in_threadpool(_start_scan, client, scan_id_text, source_ids)
 
+    register_scan_control(scan_id_text)
     background.add_task(run_scan_job, client, settings, scan, source_ids, domain, runners)
     running = {name: {"estado": "ejecutando"} for name in SOURCE_NAMES}
-    return _status_response(scan_id_text, "ejecutando", running, dominio=domain)
+    return _status_response(
+        scan_id_text, "ejecutando", running, dominio=domain,
+        iniciado_en=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+@app.post("/api/escaneos/{scan_id}/detener", response_model=ScanStatus)
+async def stop_scan(
+    scan_id: UUID,
+    user: Annotated[Any, Depends(_current_user)],
+) -> ScanStatus:
+    """Detiene un análisis propio; un admin de la organización puede detener cualquiera."""
+    client = _supabase_client()
+    profile = await run_in_threadpool(_get_profile, client, str(user.id), True)
+    scan_id_text = str(scan_id)
+    scan = await run_in_threadpool(
+        _get_scan, client, str(user.id), profile["organizacion_id"], scan_id_text,
+        profile["rol"] != "admin",
+    )
+    if not await cancel_scan_job(client, scan_id_text):
+        raise HTTPException(status_code=409, detail="El análisis ya no está en ejecución")
+    await run_in_threadpool(
+        audit, client, user_id=str(user.id), organization_id=scan["organizacion_id"],
+        action="escaneo_cancelado", scan_id=scan_id_text,
+    )
+    results = await run_in_threadpool(_source_results, client, scan_id_text)
+    domain = await run_in_threadpool(_organization_domain, client, scan["organizacion_id"])
+    return _status_response(scan_id_text, "cancelado", results, dominio=domain, finalizado_en=datetime.now(timezone.utc).isoformat())
 
 
 @app.get("/api/escaneos/{scan_id}", response_model=ScanStatus)

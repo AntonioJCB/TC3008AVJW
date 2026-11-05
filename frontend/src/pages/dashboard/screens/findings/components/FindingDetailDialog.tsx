@@ -20,7 +20,7 @@ export default function FindingDetailDialog({ finding, onClose }: { finding: Fin
         <div><dt>Prioridad</dt><dd>{severityLabels[finding.severity]}</dd></div>
         <div><dt>Estado</dt><dd>{finding.status}</dd></div>
         <div><dt>Confianza</dt><dd>{finding.confidence}%</dd></div>
-        <div><dt>Impacto de ejemplo</dt><dd>+{finding.impact}</dd></div>
+        <div><dt>Impacto en Risk Score</dt><dd>{finding.impact === null ? '—' : `+${finding.impact}`}</dd></div>
         <div><dt>Activo</dt><dd>{finding.asset}</dd></div>
         <div><dt>Regla</dt><dd>{finding.rule}</dd></div>
         <div><dt>Evidencia</dt><dd>{finding.traceEvidence}</dd></div>

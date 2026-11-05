@@ -5,6 +5,7 @@ const kindMark: Record<AssetRecord['kind'], string> = {
   Subdominio: 'S',
   'IP pública': 'IP',
   Correo: '@',
+  Servicio: 'SV',
 }
 
 export default function AssetRow({ asset, selected, onSelect }: { asset: AssetRecord; selected: boolean; onSelect: () => void }) {

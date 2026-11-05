@@ -8,8 +8,18 @@ Desde `frontend/`:
 
 ```powershell
 npm install
+Copy-Item .env.example .env
 npm run dev
 ```
+
+Configura `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` en `.env` con
+los valores del mismo proyecto Supabase que usa el backend. La llave publicable
+puede vivir en el navegador; nunca coloques `service_role` ni `sb_secret_` aquí.
+Configura `VITE_API_URL` con la dirección de FastAPI para invitar usuarios desde
+la ficha de cada cliente (en local, `http://localhost:8000`). La API necesita
+estar encendida para esta acción. Agrega la URL de `/restablecer-clave` a las
+redirecciones permitidas en **Supabase Auth → URL Configuration**; usa la misma
+dirección base que `FRONTEND_URL` del backend.
 
 Para comprobar el proyecto:
 
@@ -21,17 +31,29 @@ npm run build
 
 ## Recorrido de demostración
 
-- `/login`: entrada directa. Los campos son visuales y opcionales; el botón abre `/home` sin validar, enviar ni guardar credenciales.
-- `/home`: resumen inspirado en la propuesta de diseño, con puntaje, desglose, gráfica interactiva, severidades, hallazgos, inventario, fuentes y recorrido de muestra.
-- `/home/activos`: inventario normalizado de muestra, con búsqueda, filtros por tipo y novedades, paginación, selección de filas y ficha local del activo.
-- `/home/relaciones`: grafo de exposición con selección de nodos, contexto y rutas prioritarias simuladas.
-- `/home/fuentes`: colectores previstos, aún sin conexión.
-- `/home/hallazgos`: hallazgos con filtro por severidad.
-- `/home/historial`: estado vacío hasta que existan análisis reales.
-- `/home/asistente`: respuestas ilustrativas predefinidas.
-- `/home/configuracion`: selección de tema Negative Zone o Azul pizarra.
+- `/login`: inicia sesión con Supabase Auth y consulta el perfil en `public.usuarios`.
+- `/admin`: panel interno de BaxterSec para administradores de plataforma; lista clientes, permite crearlos y guarda cambios de reglas desde un único botón cuando hay ediciones.
+- `/admin/clientes/:id`: ficha de empresa para editar datos, cambiar estado y gestionar cuentas. El botón «Agregar usuario» abre un formulario para invitar una cuenta nueva o asignar una cuenta existente sin cliente.
+- `/home`: requiere una sesión válida y un perfil activo asociado a una organización. Muestra nombre, dominio, puntaje, activos y hallazgos reales del cliente.
 
-Las pantallas pendientes usan el escenario de `src/pages/dashboard/services/demoData.ts`, basado en `backend/mock_data.json`. Resumen, Activos y Relaciones usan datos estáticos propios en sus carpetas `services/` para reproducir la propuesta visual. En Activos hay 47 entidades simuladas, con siete filas por página; los contadores se calculan a partir de ellas y se actualizan al buscar o mostrar novedades. Relaciones muestra un subconjunto ilustrativo del grafo y permite explorar sus nodos y rutas sin consultas externas. No hay autenticación, sesión, escaneo, consultas a colectores ni llamadas a una IA.
+- `/home/activos`: activos registrados del cliente.
+- `/home/relaciones`: observaciones del último análisis terminado.
+- `/home/fuentes`: estado real de las fuentes del último análisis terminado.
+- `/home/hallazgos`: hallazgos registrados de los análisis del cliente.
+- `/home/historial`: escaneos y puntajes guardados.
+- `/home/asistente`: explicaciones guardadas; el chat interactivo aún no está conectado.
+- `/home/configuracion`: datos de cuenta, autorizaciones y tema visual.
+
+El portal de cliente reutiliza los estilos y la composición de
+`feature/base-frontend`. Sus tarjetas y listados reciben datos de Supabase;
+las pantallas de demostración originales permanecen en el repositorio como
+referencia, pero no están conectadas a `/home`.
+
+El portal de cliente y la vista de administración consultan Supabase con RLS.
+«Nuevo análisis» usa FastAPI; el panel de progreso muestra duración y resultados
+por fuente y permite detener un análisis en curso según el rol. Los archivos
+`*Mock.ts` y la antigua `DashboardPage.tsx` permanecen como referencia visual,
+pero no están en las rutas activas.
 
 ## Registro de estilos
 
@@ -49,13 +71,14 @@ Las pantallas pendientes usan el escenario de `src/pages/dashboard/services/demo
 ```text
 src/
   components/                 Componentes compartidos, como la marca
-  controllers/                Estado compartido del tema
+  controllers/                Estado del tema, sesión y perfil de Supabase
   routes/                     Rutas de la aplicación
   services/                   Persistencia local de la preferencia visual
   pages/
     login/
       components/             Panel de presentación y formulario visual
-      controller/             Navegación directa al dashboard
+      controller/             Inicio de sesión y redirección según rol
+    admin/                     Vista protegida de administración
       LoginPage.tsx
       login.css
     dashboard/

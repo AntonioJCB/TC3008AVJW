@@ -7,10 +7,10 @@ const kpis = [
   { label: 'NUEVOS', value: `+${assetStats.newAssets}`, detail: 'Desde el análisis anterior', tone: 'new' },
 ] as const
 
-export default function AssetKpis() {
+export default function AssetKpis({ values = kpis }: { values?: ReadonlyArray<{ label: string; value: string | number; detail: string; tone: string }> }) {
   return (
     <div className="asset-kpis" aria-label="Indicadores de activos">
-      {kpis.map((kpi) => (
+      {values.map((kpi) => (
         <div className={`content-card asset-kpi tone-${kpi.tone}`} key={kpi.label}>
           <span>{kpi.label}</span><strong>{kpi.value}</strong><small>{kpi.detail}</small>
         </div>

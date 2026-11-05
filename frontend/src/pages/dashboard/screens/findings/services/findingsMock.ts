@@ -13,7 +13,7 @@ export interface FindingRecord {
   confidence: number
   status: FindingStatus
   description: string
-  impact: number
+  impact: number | null
   traceFinding: string
   traceEvidence: string
 }

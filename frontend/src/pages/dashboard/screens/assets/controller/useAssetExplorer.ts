@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { mockAssets, type AssetFilter } from '../services/assetsMock'
+import { mockAssets, type AssetFilter, type AssetRecord } from '../services/assetsMock'
 
 const pageSize = 7
 
@@ -7,23 +7,23 @@ function normalize(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es')
 }
 
-export function useAssetExplorer() {
+export function useAssetExplorer(records: AssetRecord[] = mockAssets) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<AssetFilter>('Todos')
   const [newOnly, setNewOnly] = useState(false)
   const [page, setPage] = useState(0)
-  const [selectedId, setSelectedId] = useState(mockAssets[0].id)
+  const [selectedId, setSelectedId] = useState(records[0]?.id ?? '')
 
   const searchedAssets = useMemo(() => {
     const search = normalize(query.trim())
-    return mockAssets.filter((asset) =>
+    return records.filter((asset) =>
       (!newOnly || asset.isNew) &&
       (!search || normalize(`${asset.value} ${asset.detail} ${asset.kind} ${asset.sources.join(' ')}`).includes(search)),
     )
-  }, [newOnly, query])
+  }, [newOnly, query, records])
 
   const filterCounts = useMemo(() => {
-    const counts: Record<AssetFilter, number> = { Todos: searchedAssets.length, Dominio: 0, Subdominio: 0, 'IP pública': 0, Correo: 0 }
+    const counts: Record<AssetFilter, number> = { Todos: searchedAssets.length, Dominio: 0, Subdominio: 0, 'IP pública': 0, Correo: 0, Servicio: 0 }
     searchedAssets.forEach((asset) => { counts[asset.kind] += 1 })
     return counts
   }, [searchedAssets])

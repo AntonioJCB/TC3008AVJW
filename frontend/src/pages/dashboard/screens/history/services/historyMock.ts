@@ -25,6 +25,7 @@ export interface HistoryScan {
   date: string
   score: number
   marker?: string
+  occurredAt?: string
 }
 
 export const historyFilters: { kind: HistoryFilter; label: string }[] = [

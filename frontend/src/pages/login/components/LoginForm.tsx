@@ -1,7 +1,7 @@
 import { useLoginEntry } from '../controller/useLoginEntry'
 
 export default function LoginForm() {
-  const enterPortal = useLoginEntry()
+  const { enterPortal, error, submitting } = useLoginEntry()
 
   return (
     <section className="form-panel">
@@ -11,14 +11,17 @@ export default function LoginForm() {
 
         <label className="field" htmlFor="email">
           <span>Correo electrónico</span>
-          <input autoComplete="off" id="email" name="email" placeholder="nombre@empresa.com" type="email" required />
+          <input autoComplete="email" id="email" name="email" placeholder="nombre@empresa.com" type="email" required />
         </label>
         <label className="field" htmlFor="password">
           <span>Contraseña</span>
-          <input autoComplete="off" id="password" name="password" placeholder="••••••••••••" type="password" required />
+          <input autoComplete="current-password" id="password" name="password" placeholder="••••••••••••" type="password" required />
         </label>
 
-        <button className="submit-button" type="submit">Entrar al dashboard <span aria-hidden="true">→</span></button>
+        {error && <p className="login-error" role="alert">{error}</p>}
+        <button className="submit-button" type="submit" disabled={submitting}>
+          {submitting ? 'Ingresando…' : 'Entrar al dashboard'} <span aria-hidden="true">→</span>
+        </button>
       </form>
     </section>
   )

@@ -1,5 +1,8 @@
 # Documentación de Arquitectura del Sistema - BaxterSec
 
+> Este documento describe la visión del sistema. Para el estado implementado y los pendientes, consulta [docs/README.md](README.md).
+
+
 ## 1. Estructura del Proyecto y Entorno
 El proyecto está estructurado como un monorrepositorio organizado en el directorio raíz `TC3008AVJW/`:
 

@@ -7,9 +7,9 @@ const metrics = [
   { label: 'MAYOR CONCENTRACIÓN', value: relationStats.concentration, tone: 'concentration' },
 ] as const
 
-export default function RelationMetrics() {
+export default function RelationMetrics({ values = metrics }: { values?: ReadonlyArray<{ label: string; value: number; tone: string }> }) {
   return <div className="relation-metrics" aria-label="Resumen de relaciones">
-    {metrics.map((metric) => <div className={`content-card relation-metric tone-${metric.tone}`} key={metric.label}>
+    {values.map((metric) => <div className={`content-card relation-metric tone-${metric.tone}`} key={metric.label}>
       <span>{metric.label}</span><strong>{metric.value}</strong>
     </div>)}
   </div>

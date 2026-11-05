@@ -1,2 +1,4 @@
 .login-shell .login-form h2 { margin-bottom: 24px; }
 .login-shell .submit-button { margin-top: 8px; }
+.login-shell .submit-button:disabled { cursor: wait; opacity: .7; }
+.login-shell .login-error { margin: 12px 0; font-size: 15px; line-height: 1.5; }

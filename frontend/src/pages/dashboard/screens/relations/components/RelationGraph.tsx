@@ -1,4 +1,4 @@
-import { relationCanvas, relationEdges, relationNodes, type PriorityRoute } from '../services/relationsMock'
+import { relationCanvas, relationEdges, relationNodes, type PriorityRoute, type RelationEdge, type RelationNode } from '../services/relationsMock'
 import { useRelationGraphNavigation } from '../controller/useRelationGraphNavigation'
 import RelationGraphControls from './RelationGraphControls'
 
@@ -7,12 +7,13 @@ interface RelationGraphProps {
   selectedRoute: PriorityRoute | null
   onSelectNode: (id: string) => void
   onReset: () => void
+  nodes?: RelationNode[]
+  edges?: RelationEdge[]
 }
 
-const nodeById = Object.fromEntries(relationNodes.map((node) => [node.id, node]))
-
-export default function RelationGraph({ selectedNodeId, selectedRoute, onSelectNode, onReset }: RelationGraphProps) {
+export default function RelationGraph({ selectedNodeId, selectedRoute, onSelectNode, onReset, nodes = relationNodes, edges = relationEdges }: RelationGraphProps) {
   const { viewportRef, canvas, view, dragging, zoomPercent, canZoomIn, canZoomOut, zoomIn, zoomOut, fitGraph, onPointerDown, onPointerMove, onPointerEnd, onKeyDown } = useRelationGraphNavigation(relationCanvas)
+  const nodeById = new Map(nodes.map((node) => [node.id, node]))
 
   return <section className="content-card relation-graph-card" aria-label="Grafo de exposición">
     <div className="relation-graph-toolbar">
@@ -25,14 +26,15 @@ export default function RelationGraph({ selectedNodeId, selectedRoute, onSelectN
     <div className={`relation-graph-viewport${dragging ? ' dragging' : ''}`} ref={viewportRef} role="group" aria-label="Pizarra de relaciones. Arrastra para mover; usa los controles para acercar o alejar." tabIndex={0} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerEnd} onPointerCancel={onPointerEnd} onKeyDown={onKeyDown}>
       <div className="relation-graph" style={{ width: canvas.width, height: canvas.height, transform: `translate3d(${view.x}px, ${view.y}px, 0) scale(${view.scale})` }} role="group" aria-label="Mapa de relaciones entre activos">
         <svg className="relation-edges" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-          {relationEdges.map((edge) => {
-            const from = nodeById[edge.from]
-            const to = nodeById[edge.to]
+          {edges.map((edge) => {
+            const from = nodeById.get(edge.from)
+            const to = nodeById.get(edge.to)
+            if (!from || !to) return null
             const highlighted = selectedRoute ? selectedRoute.edgeIds.includes(edge.id) : selectedNodeId !== 'root' && (edge.from === selectedNodeId || edge.to === selectedNodeId)
             return <line key={edge.id} className={`${edge.critical ? 'critical' : ''}${highlighted ? ' highlighted' : ''}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y} />
           })}
         </svg>
-        {relationNodes.map((node) => <button
+        {nodes.map((node) => <button
           type="button"
           key={node.id}
           className={`relation-node tone-${node.tone}${node.id === 'root' ? ' root' : ''}${node.id === selectedNodeId ? ' selected' : ''}`}

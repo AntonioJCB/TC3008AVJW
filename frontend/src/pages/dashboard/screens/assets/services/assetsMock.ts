@@ -1,6 +1,6 @@
 // Datos estáticos de la propuesta visual. No provienen de un escaneo.
-export type AssetKind = 'Dominio' | 'Subdominio' | 'IP pública' | 'Correo'
-export type AssetExposure = 'Crítica' | 'Alta' | 'Media' | 'Baja'
+export type AssetKind = 'Dominio' | 'Subdominio' | 'IP pública' | 'Correo' | 'Servicio'
+export type AssetExposure = 'Crítica' | 'Alta' | 'Media' | 'Baja' | 'Sin evaluar'
 export type AssetFilter = AssetKind | 'Todos'
 
 export interface AssetRecord {
@@ -14,7 +14,7 @@ export interface AssetRecord {
   observed: string
   observationState: string
   isNew: boolean
-  confidence: number
+  confidence: number | null
   description: string
 }
 
@@ -24,6 +24,7 @@ export const assetFilters: { label: string; kind: AssetFilter }[] = [
   { label: 'Subdominios', kind: 'Subdominio' },
   { label: 'IPs', kind: 'IP pública' },
   { label: 'Correos', kind: 'Correo' },
+  { label: 'Servicios', kind: 'Servicio' },
 ]
 
 export const sampleAssets: AssetRecord[] = [

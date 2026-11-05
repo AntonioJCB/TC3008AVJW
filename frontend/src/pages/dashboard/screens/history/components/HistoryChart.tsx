@@ -8,7 +8,7 @@ const yBase = 206
 function chartPoints(scans: HistoryScan[]) {
   return scans.map((scan, index) => ({
     ...scan,
-    x: xStart + ((xEnd - xStart) * index) / (scans.length - 1),
+    x: xStart + ((xEnd - xStart) * index) / Math.max(1, scans.length - 1),
     y: yBase - (scan.score - 20) * 2.8,
   }))
 }
@@ -21,8 +21,8 @@ function curve(points: ReturnType<typeof chartPoints>) {
   }, `M ${points[0].x} ${points[0].y}`)
 }
 
-export default function HistoryChart({ range, onRangeChange }: { range: HistoryRange; onRangeChange: (range: HistoryRange) => void }) {
-  const currentScans = historyRanges[range]
+export default function HistoryChart({ range, onRangeChange, scanRanges = historyRanges }: { range: HistoryRange; onRangeChange: (range: HistoryRange) => void; scanRanges?: Record<HistoryRange, HistoryScan[]> }) {
+  const currentScans = scanRanges[range]
   return <section className="content-card history-chart-card" aria-labelledby="history-chart-title">
     <div className="history-chart-heading">
       <div><h2 id="history-chart-title">EVOLUCIÓN DEL RISK SCORE</h2><p>La línea conecta análisis completos; los marcadores explican los cambios relevantes.</p></div>
@@ -31,11 +31,12 @@ export default function HistoryChart({ range, onRangeChange }: { range: HistoryR
       </div>
     </div>
     <div className="history-chart-wrap">
-      <svg viewBox="0 0 760 260" role="img" aria-label={`Risk Score de ${currentScans[0].score} a ${currentScans.at(-1)!.score} en ${currentScans.length} análisis`}>
+      {currentScans.length ? <svg viewBox="0 0 760 260" role="img" aria-label={`Risk Score de ${currentScans[0].score} a ${currentScans.at(-1)!.score} en ${currentScans.length} análisis`}>
         <defs><linearGradient id="history-area-gradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0" className="history-area-start" /><stop offset="1" className="history-area-end" /></linearGradient></defs>
         <g className="history-grid-lines">{[80, 60, 40, 20].map((value) => { const y = yBase - (value - 20) * 2.8; return <g key={value}><line x1={xStart} y1={y} x2={xEnd} y2={y} /><text x="18" y={y + 4}>{value}</text></g> })}</g>
         {ranges.map((option) => {
-          const points = chartPoints(historyRanges[option])
+          const points = chartPoints(scanRanges[option])
+          if (!points.length) return null
           const line = curve(points)
           return <g key={option} className={`history-chart-layer${range === option ? ' active' : ''}`} aria-hidden={range !== option}>
             <path className="history-chart-area" d={`${line} L ${xEnd} ${yBase} L ${xStart} ${yBase} Z`} />
@@ -48,7 +49,7 @@ export default function HistoryChart({ range, onRangeChange }: { range: HistoryR
             </g>)}
           </g>
         })}
-      </svg>
+      </svg> : <p className="history-empty">No hay análisis con puntaje en este periodo.</p>}
     </div>
   </section>
 }

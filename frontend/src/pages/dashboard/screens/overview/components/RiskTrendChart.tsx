@@ -37,7 +37,7 @@ function smoothPath(points: ReturnType<typeof chartPoints>) {
   }, `M ${points[0].x} ${points[0].y}`)
 }
 
-export default function RiskTrendChart() {
+export default function RiskTrendChart({ actualValues }: { actualValues?: number[] } = {}) {
   const [range, setRange] = useState<TrendRange>('30D')
   const values = riskTrends[range]
   const [animatedValues, setAnimatedValues] = useState<number[]>(() => sampleTrend(riskTrends['30D']))
@@ -47,6 +47,12 @@ export default function RiskTrendChart() {
   const markerPoints = chartPoints(values)
   const eventPoint = markerPoints[Math.max(0, markerPoints.length - 3)]
   const lastPoint = markerPoints[markerPoints.length - 1]
+
+  const actualPoints = actualValues?.map((value, index) => ({
+    x: 42 + index * (638 / Math.max(1, actualValues.length - 1)),
+    y: 190 - value / 100 * 156,
+    value,
+  }))
 
   useEffect(() => {
     const from = animatedValuesRef.current
@@ -70,6 +76,12 @@ export default function RiskTrendChart() {
     frame = window.requestAnimationFrame(animate)
     return () => window.cancelAnimationFrame(frame)
   }, [range])
+
+  if (actualPoints) {
+    const actualLine = actualPoints.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')
+    const actualArea = actualPoints.length > 1 ? `${actualLine} L ${actualPoints.at(-1)?.x} 190 L 42 190 Z` : ''
+    return <section className="content-card proposal-card trend-card" aria-labelledby="trend-title"><div className="card-heading"><h3 id="trend-title">EVOLUCIÓN DEL RIESGO</h3><span>{actualPoints.length} análisis con puntaje</span></div>{actualPoints.length ? <div className="trend-chart"><svg viewBox="0 0 700 220" role="img" aria-label={`Puntajes históricos: ${actualValues?.join(', ')}`}><defs><linearGradient id="live-risk-trend-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--teal)" stopOpacity=".22" /><stop offset="100%" stopColor="var(--teal)" stopOpacity="0" /></linearGradient></defs>{[0, 25, 50, 75, 100].map((value) => { const y = 190 - value / 100 * 156; return <g key={value}><line x1="42" x2="680" y1={y} y2={y} className="chart-gridline" /><text x="10" y={y + 4} className="axis-label">{value}</text></g> })}{actualArea && <path d={actualArea} fill="url(#live-risk-trend-fill)" />}<path d={actualLine} className="trend-line" />{actualPoints.map((point, index) => <g key={index}><circle cx={point.x} cy={point.y} r="5" className="chart-point" /><text x={point.x} y={point.y - 13} textAnchor="middle" className="chart-value">{point.value}</text></g>)}</svg></div> : <p className="client-empty">El historial aparecerá después del primer análisis.</p>}</section>
+  }
 
   return (
     <section className="content-card proposal-card trend-card" aria-labelledby="trend-title">

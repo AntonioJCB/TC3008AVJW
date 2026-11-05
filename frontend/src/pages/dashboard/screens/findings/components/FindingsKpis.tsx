@@ -7,9 +7,9 @@ const kpis = [
   { label: 'NUEVOS', value: findingStats.new, detail: 'Detectados en este análisis', tone: 'new' },
 ]
 
-export default function FindingsKpis() {
+export default function FindingsKpis({ values = kpis }: { values?: ReadonlyArray<{ label: string; value: string | number; detail: string; tone: string }> }) {
   return <div className="finding-kpis" aria-label="Resumen de hallazgos">
-    {kpis.map((kpi) => <article className={`content-card finding-kpi tone-${kpi.tone}`} key={kpi.label}>
+    {values.map((kpi) => <article className={`content-card finding-kpi tone-${kpi.tone}`} key={kpi.label}>
       <span>{kpi.label}</span><strong>{kpi.value}</strong><small>{kpi.detail}</small>
     </article>)}
   </div>

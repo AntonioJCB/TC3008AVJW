@@ -7,9 +7,9 @@ const kpis = [
   { label: 'CAMBIOS RELEVANTES', value: historyStats.relevantChanges, detail: `${historyStats.followUpChanges} requieren seguimiento`, tone: 'changes' },
 ]
 
-export default function HistoryKpis() {
+export default function HistoryKpis({ values = kpis }: { values?: ReadonlyArray<{ label: string; value: string | number; detail: string; tone: string }> }) {
   return <div className="history-kpis" aria-label="Resumen histórico">
-    {kpis.map((kpi) => <article className={`content-card history-kpi tone-${kpi.tone}`} key={kpi.label}>
+    {values.map((kpi) => <article className={`content-card history-kpi tone-${kpi.tone}`} key={kpi.label}>
       <span>{kpi.label}</span><strong>{kpi.value}</strong><small>{kpi.detail}</small>
     </article>)}
   </div>

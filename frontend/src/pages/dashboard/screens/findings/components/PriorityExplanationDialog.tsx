@@ -3,7 +3,7 @@ import { X } from 'lucide-react'
 import type { FindingRecord } from '../services/findingsMock'
 import { severityLabels } from '../services/findingsMock'
 
-export default function PriorityExplanationDialog({ finding, onClose }: { finding: FindingRecord | null; onClose: () => void }) {
+export default function PriorityExplanationDialog({ finding, onClose, live = false }: { finding: FindingRecord | null; onClose: () => void; live?: boolean }) {
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
     window.addEventListener('keydown', closeOnEscape)
@@ -16,7 +16,7 @@ export default function PriorityExplanationDialog({ finding, onClose }: { findin
       <span className="finding-dialog-label">CRITERIOS DE PRIORIDAD</span>
       <h2 id="priority-dialog-title">¿Por qué investigar este hallazgo?</h2>
       {finding ? <>
-        <p><strong>{finding.title}</strong> aparece en la cola con prioridad {severityLabels[finding.severity].toLowerCase()}, {finding.confidence}% de confianza y un impacto ilustrativo de +{finding.impact} en el Risk Score.</p>
+        <p><strong>{finding.title}</strong> aparece en la cola con prioridad {severityLabels[finding.severity].toLowerCase()} y {finding.confidence}% de confianza{finding.impact === null ? '.' : `; el impacto ilustrativo es +${finding.impact} en el Risk Score.`}</p>
         <dl className="finding-dialog-facts">
           <div><dt>Regla</dt><dd>{finding.rule}</dd></div>
           <div><dt>Evidencia</dt><dd>{finding.traceEvidence}</dd></div>
@@ -24,7 +24,7 @@ export default function PriorityExplanationDialog({ finding, onClose }: { findin
           <div><dt>Fuentes</dt><dd>{finding.sources.join(' · ')}</dd></div>
         </dl>
       </> : <p>Selecciona un hallazgo para revisar sus señales de prioridad.</p>}
-      <p className="finding-dialog-note">Explicación de ejemplo basada en los datos locales de la maqueta.</p>
+      {!live && <p className="finding-dialog-note">Explicación de ejemplo basada en los datos locales de la maqueta.</p>}
     </section>
   </div>
 }

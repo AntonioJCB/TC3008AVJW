@@ -15,7 +15,7 @@ export default function FindingInsights({ finding, priority, onOpenDetail }: Pro
     <span className={`finding-insights-severity ${finding.severity}`}><i className={`finding-severity-dot ${finding.severity}`} aria-hidden="true" />{severityLabels[finding.severity].toUpperCase()}</span>
     <h2>{finding.title}</h2>
     <p className="finding-insights-description">{finding.description}</p>
-    <div className="finding-impact"><span>Impacto en Risk Score</span><strong>+{finding.impact}</strong></div>
+    <div className="finding-impact"><span>Impacto en Risk Score</span><strong>{finding.impact === null ? '—' : `+${finding.impact}`}</strong></div>
     <dl className="finding-trace" aria-label="Ruta de trazabilidad">
       <div><dt>Hallazgo</dt><dd>{finding.traceFinding}</dd></div>
       <div><dt>Evidencia</dt><dd>{finding.traceEvidence}</dd></div>
@@ -23,6 +23,6 @@ export default function FindingInsights({ finding, priority, onOpenDetail }: Pro
       <div><dt>Fuentes</dt><dd>{finding.sources.join(' · ')}</dd></div>
     </dl>
     <button className="finding-open-detail" type="button" onClick={onOpenDetail}>Abrir detalle</button>
-    <p className="finding-method-note">✦ La severidad y el score de esta muestra siguen reglas ilustrativas.</p>
+    {finding.impact !== null && <p className="finding-method-note">✦ La severidad y el score de esta muestra siguen reglas ilustrativas.</p>}
   </aside>
 }

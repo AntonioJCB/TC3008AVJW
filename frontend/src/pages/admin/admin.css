@@ -1,0 +1,14 @@
+.admin-content > h1 { margin: 8px 0 4px; color: var(--ink); font-size: clamp(28px, 2.6vw, 36px); }
+.admin-lead { margin: 0 0 24px; color: var(--muted); }
+.admin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.admin-card { min-width: 0; padding: 22px; border: 1px solid var(--line-soft); border-radius: 14px; background: var(--theme-surface); }
+.admin-card h2 { margin: 0 0 18px; color: var(--ink); font-size: 21px; }
+.admin-card > strong { color: var(--ink); font-size: 20px; }
+.admin-card p { color: var(--muted); }
+.admin-card ul { margin: 0; padding: 0; list-style: none; }
+.admin-card li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--line-soft); color: var(--ink); }
+.admin-card li:first-child { border-top: 0; }
+.admin-card li span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.admin-card li small { display: block; margin-top: 3px; color: var(--muted); }
+.admin-tag { flex: none; padding: 5px 9px; border-radius: 999px; background: var(--theme-surface-alt); color: var(--teal); font-size: 14px; font-weight: 700; text-transform: uppercase; }
+@media (max-width: 900px) { .admin-grid { grid-template-columns: 1fr; } }

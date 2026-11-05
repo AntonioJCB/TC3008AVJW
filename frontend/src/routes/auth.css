@@ -1,0 +1,19 @@
+.route-status {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  color: var(--ink);
+  text-align: center;
+}
+.route-status p { max-width: 420px; color: var(--muted); }
+.route-status button {
+  padding: 10px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--theme-surface);
+  color: var(--ink);
+}

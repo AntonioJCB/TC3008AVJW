@@ -26,6 +26,12 @@
 .history-chart-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
 .proposal-dashboard .history-chart-heading h2 { margin: 0; color: var(--ink); font-size: 14px; font-weight: 800; letter-spacing: .05em; }
 .history-chart-heading p { margin: 8px 0 0; color: var(--meta); font-size: 12px; line-height: 1.4; }
+.history-chart-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 9px 17px; margin-top: 14px; color: var(--muted); font-size: 12px; }
+.history-chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.history-chart-legend i { width: 9px; height: 9px; border: 2px solid var(--teal); border-radius: 50%; }
+.history-chart-legend i.incompleto { border-color: var(--bronze); }
+.history-chart-legend i.fallido { border-color: var(--risk-critical); }
+.history-chart-legend .history-chart-legend-note { color: var(--meta); }
 .history-range { display: flex; flex: none; gap: 2px; padding: 3px; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--bg); }
 .history-range button { min-width: 42px; min-height: 30px; padding: 5px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--meta); font-size: 12px; font-weight: 800; }
 .history-range button:hover,
@@ -40,8 +46,12 @@
 .history-chart-layer.active { opacity: 1; transform: translateY(0); }
 .history-chart-area { fill: url(#history-area-gradient); }
 .history-chart-line { fill: none; stroke: var(--theme-active); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.history-chart-line.incompleto { stroke: var(--bronze); stroke-dasharray: 5 6; }
+.history-chart-line.fallido { stroke: var(--risk-critical); stroke-dasharray: 5 6; }
 .history-chart-point { fill: var(--theme-surface); stroke: var(--teal); stroke-width: 3; }
-.history-chart-point.current { fill: var(--coral); stroke: var(--coral); }
+.history-chart-point.incompleto { stroke: var(--bronze); }
+.history-chart-point.fallido { stroke: var(--risk-critical); }
+.history-chart-point.current { stroke-width: 4; }
 .history-chart-value { fill: var(--ink); font-size: 12px; font-weight: 800; }
 .history-chart-date { fill: var(--meta); font-size: 11px; }
 .history-chart-marker line { stroke: var(--coral); stroke-width: 1; stroke-dasharray: 3 4; }

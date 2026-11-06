@@ -5,6 +5,7 @@ import json
 import logging
 import shutil
 import tempfile
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -12,21 +13,22 @@ from typing import Any, Awaitable, Callable
 import httpx
 
 from app.osint_normalization import normalizar_ip
+from app.settings import DEFAULT_SPIDERFOOT_MODULES
 
 logger = logging.getLogger(__name__)
-
 
 @dataclass(frozen=True)
 class OrchestratorSettings:
     shodan_api_key: str | None = None
     theharvester_bin: str = "theHarvester"
-    theharvester_sources: str = "crtsh,certspotter"
+    theharvester_sources: str = "certspotter"
     spiderfoot_url: str = "http://127.0.0.1:5001"
+    spiderfoot_modules: str = DEFAULT_SPIDERFOOT_MODULES
     request_timeout_seconds: float = 30
     process_timeout_seconds: float = 900
     spiderfoot_timeout_seconds: float = 1800
     spiderfoot_poll_seconds: float = 3
-    crtsh_retries: int = 3
+    crtsh_retries: int = 4
     shodan_max_ips: int = 10
     shodan_pause_seconds: float = 1.1
     crtsh_timeout_seconds: float = 60
@@ -120,7 +122,15 @@ async def run_crtsh(domain: str, settings: OrchestratorSettings) -> list[dict[st
                     headers={"Accept": "application/json"},
                 )
                 if response.status_code in _REINTENTABLES and intento < intentos:
-                    await _sleep(2**intento)
+                    retry_after = response.headers.get("Retry-After") if response.status_code == 429 else None
+                    delay = 30 if response.status_code == 429 and not retry_after else min(2**intento, 30)
+                    if retry_after:
+                        try:
+                            delay = min(max(float(retry_after), delay), 60)
+                        except ValueError:
+                            pass
+                    logger.warning("crt.sh respondió HTTP %s; reintento %s/%s en %s s", response.status_code, intento, intentos, delay)
+                    await _sleep(delay)
                     continue
                 response.raise_for_status()
                 payload = response.json() if response.text.strip() else []
@@ -128,7 +138,7 @@ async def run_crtsh(domain: str, settings: OrchestratorSettings) -> list[dict[st
             except (httpx.TimeoutException, httpx.TransportError):
                 if intento == intentos:
                     raise
-                await _sleep(2**intento)
+                await _sleep(min(2**intento, 30))
     if not isinstance(payload, list):
         raise ValueError("crt.sh devolvió un formato distinto de una lista JSON")
     return payload
@@ -226,18 +236,16 @@ async def run_theharvester(domain: str, settings: OrchestratorSettings) -> Any:
 
         json_report = report_base.with_suffix(".json")
         jsonl_report = report_base.with_suffix(".jsonl")
+        if process.returncode:
+            raise RuntimeError(_process_error("theHarvester", stderr, stdout))
+        if jsonl_report.is_file():
+            _check_theharvester_source_status(jsonl_report)
         if json_report.is_file():
             payload = json.loads(json_report.read_text(encoding="utf-8"))
-            if process.returncode:
-                raise RuntimeError(_process_error("theHarvester", stderr, stdout))
             return payload
         if jsonl_report.is_file():
             payload = _theharvester_jsonl_to_legacy(jsonl_report)
-            if process.returncode:
-                raise RuntimeError(_process_error("theHarvester", stderr, stdout))
             return payload
-        if process.returncode:
-            raise RuntimeError(_process_error("theHarvester", stderr, stdout))
         raise RuntimeError("theHarvester terminó sin generar el reporte JSON esperado")
 
 
@@ -268,43 +276,91 @@ def _theharvester_jsonl_to_legacy(report: Path) -> dict[str, list[str]]:
     return result
 
 
+def _check_theharvester_source_status(report: Path) -> None:
+    for line in report.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        item = json.loads(line)
+        if not isinstance(item, dict) or item.get("type") != "summary":
+            continue
+        executions = item.get("source_executions")
+        if not isinstance(executions, list):
+            continue
+        failed = [
+            str(source.get("source", "desconocida"))
+            for source in executions
+            if isinstance(source, dict) and source.get("status") != "completed"
+        ]
+        if failed:
+            raise RuntimeError(
+                "theHarvester no completó la consulta de: " + ", ".join(failed)
+            )
+
+
+def _spiderfoot_scan_id(response: httpx.Response) -> str:
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, list) or len(payload) < 2 or payload[0] != "SUCCESS":
+        raise RuntimeError(f"SpiderFoot no inició el escaneo: {payload!r}")
+    return str(payload[1])
+
+
+async def _find_spiderfoot_scan(client: httpx.AsyncClient, base_url: str, scan_name: str) -> str | None:
+    """Recupera el ID si /startscan creó el proceso pero se perdió su respuesta."""
+    for attempt in range(3):
+        try:
+            response = await client.get(f"{base_url}/scanlist", timeout=10)
+            response.raise_for_status()
+            rows = response.json()
+            if isinstance(rows, list):
+                for row in rows:
+                    if isinstance(row, list) and len(row) > 6 and row[1] == scan_name:
+                        return str(row[0])
+        except (httpx.HTTPError, ValueError):
+            logger.warning("No se pudo consultar la lista de escaneos SpiderFoot", exc_info=True)
+        if attempt < 2:
+            await asyncio.sleep(1)
+    return None
+
+
+async def _stop_spiderfoot_scan(client: httpx.AsyncClient, base_url: str, scan_id: str) -> None:
+    try:
+        response = await client.post(f"{base_url}/stopscan", data={"id": scan_id}, timeout=10)
+        response.raise_for_status()
+    except httpx.HTTPError:
+        logger.warning("No se pudo solicitar la detención de SpiderFoot %s", scan_id, exc_info=True)
+
+
 async def run_spiderfoot(domain: str, settings: OrchestratorSettings) -> list[dict[str, Any]]:
     base_url = settings.spiderfoot_url.rstrip("/")
     timeout = httpx.Timeout(settings.request_timeout_seconds)
+    scan_name = f"BaxterSec {domain} [{uuid.uuid4().hex[:12]}]"
+    scan_id: str | None = None
+    remote_terminal = False
     async with httpx.AsyncClient(timeout=timeout) as client:
+        start_task = asyncio.create_task(client.post(
+            f"{base_url}/startscan",
+            data={
+                "scanname": scan_name,
+                "scantarget": domain,
+                "modulelist": settings.spiderfoot_modules,
+                "typelist": "",
+                "usecase": "",
+            },
+            headers={"Accept": "application/json"},
+        ))
         try:
-            started = await client.post(
-                f"{base_url}/startscan",
-                data={
-                    "scanname": f"BaxterSec {domain}",
-                    "scantarget": domain,
-                    "modulelist": "",
-                    "typelist": "",
-                    # La interfaz web de SpiderFoot v4 compara los grupos con mayúscula.
-                    "usecase": "Passive",
-                },
-                headers={"Accept": "application/json"},
-            )
-        except httpx.ConnectError as error:
-            raise RuntimeError(
-                "SpiderFoot no responde en SPIDERFOOT_URL. Inicia el servicio antes del análisis"
-            ) from error
-        started.raise_for_status()
-        start_payload = started.json()
-        if (
-            not isinstance(start_payload, list)
-            or len(start_payload) < 2
-            or start_payload[0] != "SUCCESS"
-        ):
-            raise RuntimeError(f"SpiderFoot no inició el escaneo: {start_payload!r}")
-        spiderfoot_scan_id = str(start_payload[1])
-
-        try:
+            try:
+                scan_id = _spiderfoot_scan_id(await asyncio.shield(start_task))
+            except httpx.ConnectError as error:
+                raise RuntimeError(
+                    "SpiderFoot no responde en SPIDERFOOT_URL. Inicia el servicio antes del análisis"
+                ) from error
             deadline = asyncio.get_running_loop().time() + settings.spiderfoot_timeout_seconds
             terminal_states = {"FINISHED", "ABORTED", "ERROR-FAILED"}
             while asyncio.get_running_loop().time() < deadline:
                 status_response = await client.get(
-                    f"{base_url}/scanstatus", params={"id": spiderfoot_scan_id}
+                    f"{base_url}/scanstatus", params={"id": scan_id}
                 )
                 status_response.raise_for_status()
                 status_payload = status_response.json()
@@ -314,6 +370,7 @@ async def run_spiderfoot(domain: str, settings: OrchestratorSettings) -> list[di
                     else ""
                 )
                 if status in terminal_states:
+                    remote_terminal = True
                     if status != "FINISHED":
                         raise RuntimeError(f"SpiderFoot terminó con estado {status}")
                     break
@@ -322,18 +379,20 @@ async def run_spiderfoot(domain: str, settings: OrchestratorSettings) -> list[di
                 raise TimeoutError("SpiderFoot excedió el tiempo máximo de escaneo")
 
             results = await client.get(
-                f"{base_url}/scanexportjsonmulti", params={"ids": spiderfoot_scan_id}
+                f"{base_url}/scanexportjsonmulti", params={"ids": scan_id}
             )
             results.raise_for_status()
             payload = results.json()
-        except (asyncio.CancelledError, TimeoutError):
-            try:
-                stopped = await client.post(
-                    f"{base_url}/stopscan", data={"id": spiderfoot_scan_id}, timeout=10
-                )
-                stopped.raise_for_status()
-            except Exception:
-                logger.warning("No se pudo solicitar la detención de SpiderFoot %s", spiderfoot_scan_id, exc_info=True)
+        except (Exception, asyncio.CancelledError) as error:
+            if scan_id is None and (isinstance(error, (asyncio.CancelledError, httpx.TimeoutException))):
+                try:
+                    scan_id = _spiderfoot_scan_id(await asyncio.wait_for(
+                        asyncio.shield(start_task), timeout=settings.request_timeout_seconds + 5
+                    ))
+                except (Exception, asyncio.CancelledError):
+                    scan_id = await _find_spiderfoot_scan(client, base_url, scan_name)
+            if scan_id is not None and not remote_terminal:
+                await _stop_spiderfoot_scan(client, base_url, scan_id)
             raise
     if not isinstance(payload, list):
         raise ValueError("SpiderFoot devolvió un formato distinto de una lista JSON")

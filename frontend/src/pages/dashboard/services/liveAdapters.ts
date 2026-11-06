@@ -133,7 +133,15 @@ export function liveHistory(data: ClientData): HistoryEvent[] {
 
 export function liveHistoryScans(data: ClientData): HistoryScan[] {
   const risks = new Map(data.risks.map((risk) => [risk.escaneo_id, risk]))
-  return data.scans.filter((scan) => scan.finalizado_en && risks.has(scan.id)).map((scan) => ({ date: shortDate(scan.finalizado_en), score: risks.get(scan.id)!.puntaje_global, occurredAt: scan.finalizado_en! })).reverse()
+  return data.scans
+    .filter((scan) => scan.finalizado_en && risks.has(scan.id))
+    .map((scan) => ({
+      date: shortDate(scan.finalizado_en),
+      score: risks.get(scan.id)!.puntaje_global,
+      occurredAt: scan.finalizado_en!,
+      status: scan.estado === 'fallido' ? 'fallido' as const : scan.estado === 'completado' && !risks.get(scan.id)!.es_parcial ? 'completado' as const : 'incompleto' as const,
+    }))
+    .sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime())
 }
 
 export function liveRelations(data: ClientData): { nodes: RelationNode[]; edges: RelationEdge[]; routes: PriorityRoute[] } {

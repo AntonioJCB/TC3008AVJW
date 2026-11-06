@@ -1,5 +1,8 @@
 import asyncio
+import json
+import tempfile
 import unittest
+from pathlib import Path
 from urllib.parse import parse_qs
 from unittest.mock import patch
 
@@ -122,6 +125,23 @@ class CrtshTests(unittest.IsolatedAsyncioTestCase):
                 await run_crtsh("ejemplo.com", OrchestratorSettings())
         self.assertEqual(len(llamadas), 1)
 
+    async def test_respeta_retry_after_en_limite_de_consultas(self):
+        pausas = Pausas()
+        respuestas = iter([
+            httpx.Response(429, headers={"Retry-After": "7"}),
+            httpx.Response(200, json=[]),
+        ])
+        with with_transport(lambda request: next(respuestas)), patch.object(orchestrators, "_sleep", pausas):
+            self.assertEqual(await run_crtsh("ejemplo.com", OrchestratorSettings(crtsh_retries=2)), [])
+        self.assertEqual(pausas.valores, [7])
+
+    async def test_espera_mas_cuando_429_no_incluye_retry_after(self):
+        pausas = Pausas()
+        respuestas = iter([httpx.Response(429), httpx.Response(200, json=[])])
+        with with_transport(lambda request: next(respuestas)), patch.object(orchestrators, "_sleep", pausas):
+            self.assertEqual(await run_crtsh("ejemplo.com", OrchestratorSettings(crtsh_retries=2)), [])
+        self.assertEqual(pausas.valores, [30])
+
 
 class ShodanTests(unittest.IsolatedAsyncioTestCase):
     def ajustes(self, **extra):
@@ -191,16 +211,16 @@ class SpiderFootTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Inicia el servicio", outcome["error"])
 
 
-    async def test_inicia_grupo_pasivo_y_exporta_el_escaneo(self):
+    async def test_inicia_modulos_acotados_y_exporta_el_escaneo(self):
         rutas = []
 
         def handler(request):
             rutas.append(request.url.path)
             if request.url.path == "/startscan":
                 form = parse_qs(request.content.decode())
-                # SpiderFoot v4 guarda los nombres de grupo con esta capitalización.
-                if form.get("usecase") != ["Passive"]:
+                if form.get("modulelist") != [orchestrators.DEFAULT_SPIDERFOOT_MODULES]:
                     return httpx.Response(200, json=["ERROR", "Incorrect usage: no modules specified for scan."])
+                self.assertNotIn("sfp_stevenblack_hosts", form["modulelist"][0])
                 return httpx.Response(200, json=["SUCCESS", "scan-123"])
             self.assertEqual(request.url.params.get("id") or request.url.params.get("ids"), "scan-123")
             if request.url.path == "/scanstatus":
@@ -236,8 +256,70 @@ class SpiderFootTests(unittest.IsolatedAsyncioTestCase):
                 await job
         self.assertEqual(routes, ["/startscan", "/scanstatus", "/stopscan"])
 
+    async def test_cancelacion_durante_startscan_detiene_el_trabajo_remoto(self):
+        starting = asyncio.Event()
+        release = asyncio.Event()
+        routes = []
+
+        async def handler(request):
+            routes.append(request.url.path)
+            if request.url.path == "/startscan":
+                starting.set()
+                await release.wait()
+                return httpx.Response(200, json=["SUCCESS", "scan-early"])
+            self.assertEqual(parse_qs(request.content.decode()).get("id"), ["scan-early"])
+            return httpx.Response(200, json="")
+
+        with with_transport(handler):
+            job = asyncio.create_task(orchestrators.run_spiderfoot("ejemplo.com", OrchestratorSettings()))
+            await asyncio.wait_for(starting.wait(), timeout=2)
+            job.cancel()
+            release.set()
+            with self.assertRaises(asyncio.CancelledError):
+                await asyncio.wait_for(job, timeout=2)
+        self.assertEqual(routes, ["/startscan", "/stopscan"])
+
+    async def test_timeout_de_startscan_recupera_id_y_detiene_el_trabajo(self):
+        routes = []
+        scan_name = ""
+
+        def handler(request):
+            nonlocal scan_name
+            routes.append(request.url.path)
+            if request.url.path == "/startscan":
+                scan_name = parse_qs(request.content.decode())["scanname"][0]
+                raise httpx.ReadTimeout("sin respuesta", request=request)
+            if request.url.path == "/scanlist":
+                return httpx.Response(200, json=[["scan-lost", scan_name, "ejemplo.com", "", "", "", "RUNNING"]])
+            self.assertEqual(parse_qs(request.content.decode()).get("id"), ["scan-lost"])
+            return httpx.Response(200, json="")
+
+        with with_transport(handler):
+            with self.assertRaises(httpx.ReadTimeout):
+                await orchestrators.run_spiderfoot("ejemplo.com", OrchestratorSettings())
+        self.assertEqual(routes, ["/startscan", "/scanlist", "/stopscan"])
+
 
 class TheHarvesterTests(unittest.IsolatedAsyncioTestCase):
+    async def test_reporte_marca_limite_de_proveedor_como_fallo(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "report.jsonl"
+            report.write_text(json.dumps({
+                "type": "summary",
+                "source_executions": [{"source": "certspotter", "status": "rate-limited"}],
+            }), encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "certspotter"):
+                orchestrators._check_theharvester_source_status(report)
+
+    async def test_reporte_acepta_consulta_completa_sin_resultados(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "report.jsonl"
+            report.write_text(json.dumps({
+                "type": "summary",
+                "source_executions": [{"source": "certspotter", "status": "completed", "result_count": 0}],
+            }), encoding="utf-8")
+            orchestrators._check_theharvester_source_status(report)
+
     async def test_ruta_inexistente_no_expone_ruta_de_otro_equipo(self):
         unavailable = "/Users/another-machine/theHarvester"
         with patch.object(orchestrators.shutil, "which", return_value=None):

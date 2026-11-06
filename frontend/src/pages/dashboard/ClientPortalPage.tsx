@@ -14,7 +14,7 @@ import SettingsScreen from './screens/settings/SettingsScreen'
 import DashboardSidebar from './components/sidebar/DashboardSidebar'
 import { navigation, type DashboardSection } from './navigation'
 import { loadClientData, type ClientData, type Risk, type Scan } from './services/clientData'
-import { createScan, executeScan, getScanProgress, stopScan, type ScanProgress } from './services/scanActions'
+import { createScan, executeScan, getScanProgress, ScanRequestError, stopScan, type ScanProgress } from './services/scanActions'
 import { liveFindings } from './services/liveAdapters'
 import './dashboard.css'
 import './typography.css'
@@ -67,6 +67,7 @@ function ClientPortalView({ organizationId }: { organizationId: string }) {
   const [polling, setPolling] = useState(false)
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null)
   const [scanError, setScanError] = useState<string | null>(null)
+  const [scanStatusError, setScanStatusError] = useState<string | null>(null)
   const [stopDialogOpen, setStopDialogOpen] = useState(false)
   const [stopBusy, setStopBusy] = useState(false)
   const refreshData = () => { setLoading(true); setRefresh((value) => value + 1) }
@@ -98,12 +99,15 @@ function ClientPortalView({ organizationId }: { organizationId: string }) {
     if (!polling || !trackedScanId) return
     let active = true
     let inFlight = false
+    let consecutiveFailures = 0
     const check = async () => {
       if (inFlight) return
       inFlight = true
       try {
         const progress = await getScanProgress(trackedScanId)
         if (!active) return
+        consecutiveFailures = 0
+        setScanStatusError(null)
         setScanProgress(progress)
         if (progress.estado !== 'pendiente' && progress.estado !== 'ejecutando') {
           setPolling(false)
@@ -112,8 +116,16 @@ function ClientPortalView({ organizationId }: { organizationId: string }) {
         }
       } catch (cause) {
         if (!active) return
-        setPolling(false)
-        setScanError(cause instanceof Error ? cause.message : 'No se pudo consultar el análisis.')
+        if (!(cause instanceof ScanRequestError && cause.retryable)) {
+          setPolling(false)
+          setScanStatusError(null)
+          setScanError(cause instanceof Error ? cause.message : 'No se pudo consultar el análisis.')
+          return
+        }
+        consecutiveFailures += 1
+        if (consecutiveFailures >= 3) {
+          setScanStatusError('No se pudo consultar el estado del análisis. Reintentando automáticamente…')
+        }
       } finally {
         inFlight = false
       }
@@ -144,6 +156,7 @@ function ClientPortalView({ organizationId }: { organizationId: string }) {
       setScanProgress(progress)
       setPolling(false)
       setTrackedScanId(null)
+      setScanStatusError(null)
       setStopDialogOpen(false)
       refreshData()
     } catch (cause) {
@@ -179,6 +192,7 @@ function ClientPortalView({ organizationId }: { organizationId: string }) {
       setTrackedScanId(scanId)
       setScanProgress(progress)
       setPolling(true)
+      setScanStatusError(null)
       setScanDialogOpen(false)
       refreshData()
     } catch (cause) {
@@ -212,6 +226,7 @@ function ClientPortalView({ organizationId }: { organizationId: string }) {
           ? <ScanProgressPanel progress={progressForRunning} canStop={Boolean(canStopRunning && progressForRunning.puede_detener)} stopping={stopBusy} onStop={() => setStopDialogOpen(true)} />
           : ((runningId && !progressForRunning) || scanProgress) && <div className="client-scan-notice" role="status"><strong>Análisis {scanProgress?.estado ?? 'ejecutando'}</strong><span>{scanProgress?.mensaje || 'Consultando el estado de las fuentes OSINT…'}</span></div>}
         {scanError && !scanDialogOpen && <div className="client-error" role="alert">{scanError}</div>}
+        {scanStatusError && <div className="client-error" role="alert">{scanStatusError}</div>}
         {(activeSection === 'fuentes' || activeSection === 'asistente' || activeSection === 'configuracion') && <div className="content-intro proposal-section-intro"><div><span className="eyebrow">{activeSection === 'fuentes' ? `INTELIGENCIA OSINT · ${data?.sources.length ?? 0} FUENTES` : data?.organization.dominio_principal ?? 'ORGANIZACIÓN'}</span><h1>{activeLabel}</h1><p>{activeSection === 'fuentes' ? 'Supervisa cobertura, salud y contribución de cada fuente para interpretar la confianza del análisis.' : `Información de ${data?.organization.nombre ?? 'tu organización'}`}</p></div></div>}
         {loading && <p className="client-loading" role="status">Cargando información de tu organización…</p>}
         {error && <div className="client-error" role="alert">{error}</div>}
@@ -260,7 +275,7 @@ function Summary({ data, latest }: { data: ClientData; latest: Scan | null }) {
       <section className="content-card proposal-card severity-card"><div className="card-heading"><h3>HALLAZGOS POR SEVERIDAD</h3><Link to="/home/hallazgos">Ver todos</Link></div><div className="severity-bars">{severityCounts.map(({ label, count }) => <div className="severity-bar-row" key={label}><span>{label}</span><div className="bar-track"><i className={`tone-${label === 'crítico' ? 'critical' : label === 'alto' ? 'high' : label === 'medio' ? 'medium' : 'low'}`} style={{ width: `${count / maxSeverity * 100}%` }} /></div><strong>{count}</strong></div>)}</div></section>
     </div>
     <section className="content-card proposal-card priorities-card"><div className="card-heading"><h3>HALLAZGOS PRIORITARIOS</h3><Link to="/home/hallazgos">Ver todos los hallazgos</Link></div>{priorityFindings.length ? <div className="priority-table-wrap"><table className="priority-table"><thead><tr><th>SEVERIDAD</th><th>HALLAZGO</th><th>ACTIVO</th><th>CONFIANZA</th><th /></tr></thead><tbody>{priorityFindings.slice(0, 5).map((finding) => <tr key={finding.id}><td><span className={`priority-severity ${finding.severity === 'critical' ? 'critical' : 'high'}`}>{finding.severity === 'critical' ? 'CRÍTICA' : finding.severity === 'high' ? 'ALTA' : finding.severity === 'medium' ? 'MEDIA' : 'BAJA'}</span></td><td><strong>{finding.title}</strong></td><td>{finding.asset}</td><td>{finding.confidence}%</td><td><Link to="/home/hallazgos">Ver</Link></td></tr>)}</tbody></table></div> : <Empty>No hay hallazgos registrados.</Empty>}</section>
-    <div className="overview-bottom-grid"><section className="content-card proposal-card inventory-card"><div className="card-heading"><h3>INVENTARIO DE ACTIVOS</h3><Link to="/home/activos">Explorar activos</Link></div>{types.length ? <div className="inventory-bars">{types.map(({ label, count }) => <div className="inventory-bar-row" key={label}><span>{label}</span><strong>{count}</strong><div className="bar-track"><i className="tone-info" style={{ width: `${count / maxType * 100}%` }} /></div></div>)}</div> : <Empty>Aún no hay activos descubiertos.</Empty>}</section><section className="content-card proposal-card sources-card"><div className="card-heading"><h3>SALUD DE FUENTES</h3><Link to="/home/fuentes">Detalles</Link></div><div className="source-health-list">{data.sources.map((source) => <div className="source-health-row" key={source.id}><span className="source-status-dot" /><strong>{source.nombre}</strong><em>{sourceResults.get(source.id)?.estado ?? 'Sin ejecutar'}</em></div>)}</div><div className="sources-foot"><span>Cobertura del análisis</span><strong>{coverage}%</strong></div><div className="source-progress" role="img" aria-label={`Cobertura de fuentes: ${coverage}%`}><i style={{ width: `${coverage}%` }} /></div></section></div>
+    <div className="overview-bottom-grid"><section className="content-card proposal-card inventory-card"><div className="card-heading"><h3>INVENTARIO DE ACTIVOS</h3><Link to="/home/activos">Explorar activos</Link></div>{types.length ? <div className="inventory-bars">{types.map(({ label, count }) => <div className="inventory-bar-row" key={label}><span>{label}</span><strong>{count}</strong><div className="bar-track"><i className="tone-info" style={{ width: `${count / maxType * 100}%` }} /></div></div>)}</div> : <Empty>Aún no hay activos descubiertos.</Empty>}</section><section className="content-card proposal-card sources-card"><div className="card-heading"><h3>SALUD DE FUENTES</h3><Link to="/home/fuentes">Detalles</Link></div><div className="source-health-list">{data.sources.map((source) => <div className={`source-health-row${sourceResults.get(source.id)?.estado === 'fallido' ? ' error' : ''}`} key={source.id}><span className="source-status-dot" /><strong>{source.nombre}</strong><em>{sourceResults.get(source.id)?.estado ?? 'Sin ejecutar'}</em></div>)}</div><div className="sources-foot"><span>Cobertura del análisis</span><strong>{coverage}%</strong></div><div className="source-progress" role="img" aria-label={`Cobertura de fuentes: ${coverage}%`}><i style={{ width: `${coverage}%` }} /></div></section></div>
     <section className="content-card proposal-card changes-card"><div className="card-heading"><h3>ACTIVIDAD RECIENTE</h3><Link to="/home/historial">Abrir historial</Link></div>{data.scans.length ? <div className="milestone-grid">{data.scans.slice(0, 3).map((scan) => <div className="milestone" key={scan.id}><span className="milestone-ring tone-info" /><div><strong>Análisis {scan.estado}</strong><p>{dateTime(scan.finalizado_en ?? scan.iniciado_en)}</p><small>{riskFor(data, scan)?.puntaje_global ?? '—'} puntos de riesgo</small></div></div>)}</div> : <Empty>Todavía no hay análisis registrados.</Empty>}</section>
   </div>
 }

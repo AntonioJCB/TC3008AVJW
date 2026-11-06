@@ -152,6 +152,7 @@ def orchestrator_settings(settings: Settings) -> OrchestratorSettings:
         theharvester_bin=settings.theharvester_bin,
         theharvester_sources=settings.theharvester_sources,
         spiderfoot_url=settings.spiderfoot_url,
+        spiderfoot_modules=settings.spiderfoot_modules,
         request_timeout_seconds=settings.request_timeout_seconds,
         process_timeout_seconds=settings.process_timeout_seconds,
         spiderfoot_timeout_seconds=settings.spiderfoot_timeout_seconds,

@@ -82,6 +82,7 @@ class ScanEndpointTests(unittest.TestCase):
             theharvester_bin="theHarvester",
             theharvester_sources="crtsh,certspotter",
             spiderfoot_url="http://127.0.0.1:5001",
+            spiderfoot_modules="sfp_dnsresolve,sfp_dnsraw,sfp_robtex,sfp_crobat_api",
             request_timeout_seconds=30,
             process_timeout_seconds=900,
             spiderfoot_timeout_seconds=1800,

@@ -24,6 +24,7 @@ export interface HistoryEvent {
 export interface HistoryScan {
   date: string
   score: number
+  status?: 'completado' | 'incompleto' | 'fallido'
   marker?: string
   occurredAt?: string
 }

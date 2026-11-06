@@ -170,6 +170,8 @@
 .overview-screen .source-health-row.partial em { color: var(--risk-medium); }
 .overview-screen .source-status-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--risk-low); }
 .overview-screen .source-health-row.partial .source-status-dot { background: var(--risk-medium); }
+.overview-screen .source-health-row.error em { color: var(--risk-critical); }
+.overview-screen .source-health-row.error .source-status-dot { background: var(--risk-critical); }
 .overview-screen .sources-foot { display: flex; justify-content: space-between; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: 12px; }
 .overview-screen .sources-foot strong { color: var(--ink); }
 .overview-screen .source-progress { height: 6px; margin-top: 8px; background: var(--theme-track); }

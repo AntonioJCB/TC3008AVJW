@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
+DEFAULT_SPIDERFOOT_MODULES = "sfp_dnsresolve,sfp_dnsraw,sfp_robtex,sfp_crobat_api"
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -29,6 +31,7 @@ class Settings:
     shodan_pause_seconds: float
     frontend_url: str = "http://localhost:5173"
     crtsh_timeout_seconds: float = 60
+    spiderfoot_modules: str = DEFAULT_SPIDERFOOT_MODULES
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -61,11 +64,14 @@ class Settings:
             shodan_api_key=shodan_api_key or None,
             theharvester_bin=os.getenv("THEHARVESTER_BIN", "theHarvester").strip(),
             theharvester_sources=os.getenv(
-                "THEHARVESTER_SOURCES", "crtsh,certspotter"
+                "THEHARVESTER_SOURCES", "certspotter"
             ).strip(),
             spiderfoot_url=os.getenv(
                 "SPIDERFOOT_URL", "http://127.0.0.1:5001"
             ).rstrip("/"),
+            spiderfoot_modules=os.getenv(
+                "SPIDERFOOT_MODULES", DEFAULT_SPIDERFOOT_MODULES
+            ).strip(),
             request_timeout_seconds=float(os.getenv("REQUEST_TIMEOUT_SECONDS", "30")),
             process_timeout_seconds=float(os.getenv("PROCESS_TIMEOUT_SECONDS", "900")),
             spiderfoot_timeout_seconds=float(
@@ -74,7 +80,7 @@ class Settings:
             spiderfoot_poll_seconds=float(os.getenv("SPIDERFOOT_POLL_SECONDS", "3")),
             # Tiempo máximo por fuente; debe ser mayor que SPIDERFOOT_TIMEOUT_SECONDS.
             scan_timeout_seconds=float(os.getenv("SCAN_TIMEOUT_SECONDS", "2100")),
-            crtsh_retries=int(os.getenv("CRTSH_RETRIES", "3")),
+            crtsh_retries=int(os.getenv("CRTSH_RETRIES", "4")),
             shodan_max_ips=int(os.getenv("SHODAN_MAX_IPS", "10")),
             shodan_pause_seconds=float(os.getenv("SHODAN_PAUSE_SECONDS", "1.1")),
             frontend_url=os.getenv("FRONTEND_URL", "http://localhost:5173").strip().rstrip("/"),

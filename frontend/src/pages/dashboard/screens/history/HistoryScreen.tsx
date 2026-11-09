@@ -16,6 +16,7 @@ import './history.css'
 export default function HistoryScreen({ data }: { data?: ClientData }) {
   const events = useMemo(() => data ? liveHistory(data) : historyEvents, [data])
   const scans = useMemo(() => data ? liveHistoryScans(data) : [], [data])
+  const comparableScans = useMemo(() => scans.filter((scan) => scan.status === 'completado'), [scans])
   const scanRanges = useMemo<Record<HistoryRange, HistoryScan[]> | undefined>(() => {
     if (!data) return undefined
     const within = (days: number) => scans.filter((scan) => scan.occurredAt && new Date(scan.occurredAt).getTime() >= data.loadedAt - days * 86400000)
@@ -24,12 +25,12 @@ export default function HistoryScreen({ data }: { data?: ClientData }) {
   const explorer = useHistoryExplorer(events)
   const [comparisonOpen, setComparisonOpen] = useState(false)
   const [detailEvent, setDetailEvent] = useState<HistoryEvent | null>(null)
-  const currentScore = scans.at(-1)?.score
-  const previousScore = scans.at(-2)?.score
+  const currentScore = comparableScans.at(-1)?.score
+  const previousScore = comparableScans.at(-2)?.score
   const newAssets = data?.assets.filter((asset) => data.latestFinishedScan?.iniciado_en && new Date(asset.visto_primera_vez).getTime() >= new Date(data.latestFinishedScan.iniciado_en).getTime()).length ?? 0
   const kpis = data ? [
-    { label: 'RISK SCORE ACTUAL', value: currentScore ?? '—', detail: previousScore === undefined || currentScore === undefined ? 'Sin comparación previa' : `${currentScore - previousScore >= 0 ? '+' : ''}${currentScore - previousScore} desde el anterior`, tone: 'risk' },
-    { label: 'ANÁLISIS COMPLETADOS', value: data.scans.filter((scan) => Boolean(scan.finalizado_en)).length, detail: 'En el historial disponible', tone: 'scans' },
+    { label: 'ÚLTIMO SCORE COMPLETO', value: currentScore ?? '—', detail: previousScore === undefined || currentScore === undefined ? 'Sin comparación previa' : `${currentScore - previousScore >= 0 ? '+' : ''}${currentScore - previousScore} desde el anterior`, tone: 'risk' },
+    { label: 'ANÁLISIS COMPLETADOS', value: comparableScans.length, detail: 'Con puntaje comparable en el historial', tone: 'scans' },
     { label: 'ACTIVOS NUEVOS', value: newAssets, detail: 'Desde el último análisis', tone: 'assets' },
     { label: 'CAMBIOS RELEVANTES', value: events.length, detail: 'Eventos disponibles', tone: 'changes' },
   ] : undefined
@@ -38,15 +39,15 @@ export default function HistoryScreen({ data }: { data?: ClientData }) {
     <div className="history-screen">
       <header className="history-header">
         <div><h1>Historial</h1><p>Entiende qué cambió entre análisis, cuándo apareció cada señal y cómo impactó la exposición de la organización.</p></div>
-        <div className="history-header-actions"><span>Último análisis: {data ? `${shortDate(data.latestFinishedScan?.finalizado_en)}, ${shortTime(data.latestFinishedScan?.finalizado_en)}` : demoProject.lastAnalysis}</span><button type="button" onClick={() => setComparisonOpen(true)} disabled={Boolean(data && scans.length < 2)}>Comparar análisis</button></div>
+        <div className="history-header-actions"><span>Último análisis: {data ? `${shortDate(data.latestFinishedScan?.finalizado_en)}, ${shortTime(data.latestFinishedScan?.finalizado_en)}` : demoProject.lastAnalysis}</span><button type="button" onClick={() => setComparisonOpen(true)} disabled={Boolean(data && comparableScans.length < 2)}>Comparar análisis</button></div>
       </header>
       <HistoryKpis values={kpis} />
       <div className="history-top-grid">
-        <HistoryChart range={explorer.range} onRangeChange={explorer.setRange} scanRanges={scanRanges} />
-        {data ? <LiveHistoryComparison data={data} scans={scans} newAssets={newAssets} /> : <HistoryComparison />}
+        <HistoryChart range={explorer.range} onRangeChange={explorer.setRange} scanRanges={scanRanges} live={Boolean(data)} />
+        {data ? <LiveHistoryComparison data={data} scans={comparableScans} newAssets={newAssets} /> : <HistoryComparison />}
       </div>
       <HistoryLog explorer={explorer} onOpenEvent={setDetailEvent} />
-      {comparisonOpen && (data ? <LiveComparisonDialog scans={scans} onClose={() => setComparisonOpen(false)} /> : <HistoryComparisonDialog onClose={() => setComparisonOpen(false)} />)}
+      {comparisonOpen && (data ? <LiveComparisonDialog scans={comparableScans} onClose={() => setComparisonOpen(false)} /> : <HistoryComparisonDialog onClose={() => setComparisonOpen(false)} />)}
       {detailEvent && <HistoryDetailDialog event={detailEvent} onClose={() => setDetailEvent(null)} />}
     </div>
   )

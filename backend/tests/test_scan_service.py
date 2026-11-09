@@ -80,6 +80,7 @@ class ExecuteTests(unittest.TestCase):
 class RunScanJobTests(unittest.IsolatedAsyncioTestCase):
     SETTINGS = SimpleNamespace(
         shodan_api_key=None, theharvester_bin="x", theharvester_sources="x", spiderfoot_url="http://x",
+        spiderfoot_modules="sfp_dnsresolve,sfp_dnsraw,sfp_robtex,sfp_crobat_api",
         request_timeout_seconds=1, process_timeout_seconds=1, spiderfoot_timeout_seconds=1, spiderfoot_poll_seconds=1,
         scan_timeout_seconds=5, crtsh_retries=1, crtsh_timeout_seconds=60, shodan_max_ips=1, shodan_pause_seconds=0,
     )

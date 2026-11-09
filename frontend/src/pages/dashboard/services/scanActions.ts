@@ -1,5 +1,14 @@
 import { supabase } from '../../../services/supabase'
 
+export class ScanRequestError extends Error {
+  readonly retryable: boolean
+
+  constructor(message: string, retryable: boolean) {
+    super(message)
+    this.retryable = retryable
+  }
+}
+
 export type ScanProgress = {
   escaneo_id: string
   estado: string
@@ -21,9 +30,9 @@ export type ScanProgress = {
 }
 
 async function scanRequest<T>(path: string, method = 'GET', body?: object): Promise<T> {
-  if (!supabase) throw new Error('Supabase no está configurado.')
+  if (!supabase) throw new ScanRequestError('Supabase no está configurado.', false)
   const { data: { session } } = await supabase.auth.getSession()
-  if (!session) throw new Error('Tu sesión terminó. Vuelve a iniciar sesión.')
+  if (!session) throw new ScanRequestError('Tu sesión terminó. Vuelve a iniciar sesión.', false)
 
   const baseUrl = import.meta.env.VITE_API_URL?.trim().replace(/\/$/, '') || 'http://localhost:8000'
   let response: Response
@@ -34,12 +43,15 @@ async function scanRequest<T>(path: string, method = 'GET', body?: object): Prom
       body: body ? JSON.stringify(body) : undefined,
     })
   } catch {
-    throw new Error('No se pudo conectar con el backend. Comprueba que esté iniciado.')
+    throw new ScanRequestError('No se pudo conectar con el backend. Comprueba que esté iniciado.', true)
   }
 
   const result = await response.json().catch(() => null) as (T & { detail?: string }) | null
-  if (!response.ok) throw new Error(typeof result?.detail === 'string' ? result.detail : 'No se pudo procesar el análisis.')
-  if (!result) throw new Error('El backend devolvió una respuesta vacía.')
+  if (!response.ok) throw new ScanRequestError(
+    typeof result?.detail === 'string' ? result.detail : 'No se pudo procesar el análisis.',
+    response.status === 429 || response.status >= 500,
+  )
+  if (!result) throw new ScanRequestError('El backend devolvió una respuesta vacía.', true)
   return result
 }
 

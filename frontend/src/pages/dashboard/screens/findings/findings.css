@@ -1,14 +1,6 @@
 /* Hallazgos: componentes y medidas propios de esta pantalla. */
 .proposal-dashboard .dashboard-content.findings-content { max-width: none; padding-bottom: 32px; }
 .findings-screen { display: grid; gap: 16px; }
-.findings-header { display: flex; align-items: end; justify-content: space-between; gap: 20px; min-width: 0; }
-.findings-header h1 { margin: 0 0 6px; color: var(--ink); font-size: clamp(29px, 2.6vw, 36px); letter-spacing: -.045em; line-height: 1.1; }
-.findings-header p { max-width: 850px; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.45; }
-.findings-header-actions { display: flex; flex: none; align-items: center; gap: 15px; padding-bottom: 2px; }
-.findings-header-actions > span { color: var(--meta); font-size: 12px; white-space: nowrap; }
-.findings-header-actions button { min-height: 42px; padding: 9px 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--theme-surface); color: var(--ink); font-size: 13px; font-weight: 750; white-space: nowrap; }
-.findings-header-actions button:hover { border-color: var(--teal); color: var(--teal); }
-.findings-header-actions button span { margin-right: 3px; font-size: 16px; }
 
 .finding-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .finding-kpi { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 115px; padding: 18px 19px 19px; overflow: hidden; border-radius: 12px; }
@@ -111,17 +103,12 @@
   .finding-grid { grid-template-columns: minmax(100px, .72fr) minmax(210px, 2.2fr) minmax(195px, 1.75fr) minmax(80px, .58fr) minmax(80px, .56fr); }
 }
 @media (max-width: 760px) {
-  .findings-header { align-items: start; flex-direction: column; }
-  .findings-header-actions { width: 100%; justify-content: space-between; }
   .finding-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .finding-queue-toolbar { flex-wrap: wrap; }
   .finding-search { flex: 1 1 100%; }
   .finding-filters { flex-wrap: wrap; overflow-x: visible; }
 }
 @media (max-width: 620px) {
-  .findings-header p { font-size: 12px; }
-  .findings-header-actions > span { font-size: 11px; }
-  .findings-header-actions button { font-size: 11px; }
   .finding-kpi { min-height: 103px; padding: 15px; }
   .finding-kpi > span { font-size: 10px; white-space: normal; }
   .finding-kpi > strong { font-size: 25px; }

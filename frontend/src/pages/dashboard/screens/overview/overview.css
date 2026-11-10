@@ -104,16 +104,34 @@
 .overview-screen .trend-ranges { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--line-soft); border-radius: 7px; background: var(--bg); }
 .overview-screen .trend-ranges button { padding: 6px 9px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font-size: 10px; transition: background-color .25s ease, color .25s ease; }
 .overview-screen .trend-ranges button.selected { background: var(--theme-surface-alt); color: var(--ink); font-weight: 700; }
-.overview-screen .trend-chart { height: 235px; margin-top: 18px; }
+.overview-screen .trend-card .card-heading { align-items: start; flex-wrap: wrap; }
+.overview-screen .trend-date-filter { display: flex; align-items: end; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-left: auto; }
+.overview-screen .trend-date-filter label { display: grid; gap: 5px; color: var(--muted); font-size: 13px; font-weight: 700; }
+.overview-screen .trend-date-filter input { min-height: 38px; padding: 7px 10px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--theme-field); color: var(--ink); font: inherit; font-weight: 500; }
+.overview-screen .trend-date-filter input:focus-visible,
+.overview-screen .trend-date-filter button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.overview-screen .trend-date-filter button { min-height: 38px; padding: 7px 11px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--theme-surface-alt); color: var(--ink); font-size: 13px; font-weight: 700; cursor: pointer; }
+.overview-screen .trend-chart { height: 245px; margin-top: 18px; }
 .overview-screen .trend-chart svg { width: 100%; height: 100%; overflow: visible; }
 .overview-screen .chart-gridline { stroke: var(--line-soft); stroke-width: 1; }
 .overview-screen .axis-label { fill: var(--meta); font-size: 10px; }
 .overview-screen .trend-area { fill: url(#overview-trend-fill); }
 .overview-screen .trend-line { fill: none; stroke: var(--teal); stroke-width: 2.5; stroke-linecap: round; }
+.overview-screen .trend-line.risk { stroke: url(#live-risk-scale); }
+.overview-screen .trend-line.partial { stroke: var(--bronze); stroke-dasharray: 5 6; }
 .overview-screen .chart-event line { stroke: var(--coral); stroke-width: 1; stroke-dasharray: 3 3; }
 .overview-screen .chart-event text { fill: var(--coral); font-size: 10px; font-weight: 700; }
 .overview-screen .chart-point { fill: var(--theme-surface); stroke: var(--teal); stroke-width: 3; }
+.overview-screen .chart-point.incompleto { stroke: var(--bronze); }
+.overview-screen .chart-point.fallido { stroke: var(--risk-critical); }
 .overview-screen .chart-value { fill: var(--ink); font-size: 11px; font-weight: 700; }
+.overview-screen .chart-date { fill: var(--meta); font-size: 11px; }
+.overview-screen .trend-status-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0; color: var(--muted); font-size: 12px; }
+.overview-screen .trend-status-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.overview-screen .trend-status-legend i { width: 9px; height: 9px; border: 2px solid var(--teal); border-radius: 50%; }
+.overview-screen .trend-status-legend i.completado { width: 26px; border: 0; border-radius: 5px; background: linear-gradient(90deg, var(--risk-low), var(--risk-medium), var(--risk-high), var(--risk-critical)); }
+.overview-screen .trend-status-legend i.incompleto { border-color: var(--bronze); }
+.overview-screen .trend-status-legend i.fallido { border-color: var(--risk-critical); }
 .overview-screen .chart-markers { animation: overview-markers-enter .55s ease-out both; }
 @keyframes overview-markers-enter { from { opacity: 0; } to { opacity: 1; } }
 .overview-screen .severity-card,
@@ -217,11 +235,16 @@
   .overview-screen .priority-table th,
   .overview-screen .priority-table td { padding: 12px 16px; }
   .overview-screen .milestone-grid { grid-template-columns: repeat(2, 1fr); }
+  .overview-screen .trend-date-filter { justify-content: flex-start; width: 100%; margin-left: 0; }
+  .overview-screen .trend-chart { overflow-x: auto; }
+  .overview-screen .trend-chart svg { min-width: 700px; }
 }
 @media (max-width: 420px) {
   .overview-screen .risk-card-body { flex-direction: column; }
   .overview-screen .risk-breakdown { width: 100%; }
   .overview-screen .trend-card .card-heading { display: block; }
   .overview-screen .trend-ranges { margin-top: 14px; }
+  .overview-screen .trend-date-filter label { flex: 1 1 120px; min-width: 0; }
+  .overview-screen .trend-date-filter input { width: 100%; min-width: 0; }
   .overview-screen .inventory-bar-row { grid-template-columns: 86px 20px 1fr; }
 }

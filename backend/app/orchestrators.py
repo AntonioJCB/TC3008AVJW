@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class OrchestratorSettings:
     shodan_api_key: str | None = None
     theharvester_bin: str = "theHarvester"
-    theharvester_sources: str = "certspotter"
+    theharvester_sources: str = "certspotter,hackertarget"
     spiderfoot_url: str = "http://127.0.0.1:5001"
     spiderfoot_modules: str = DEFAULT_SPIDERFOOT_MODULES
     request_timeout_seconds: float = 30

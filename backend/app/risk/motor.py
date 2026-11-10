@@ -27,7 +27,7 @@ from app.risk.reglas import DEFINICIONES
 
 log = logging.getLogger(__name__)
 
-VERSION_MOTOR = "1.0.0"
+VERSION_MOTOR = "1.1.0"
 CATEGORIAS = ("infraestructura", "identidad_digital", "configuracion", "fuga_de_datos")
 #: Qué fuente se registra como "principal" en hallazgos.fuente_id cuando varias coinciden.
 PRIORIDAD_FUENTE = ("Shodan", "crt.sh", "SpiderFoot", "theHarvester")
@@ -125,6 +125,7 @@ def evaluar_riesgo(
     global_ = round(combinar_riesgos(por_categoria.values()))
 
     total = len(reglas)
+    activas = sum(regla.esta_activa for regla in reglas)
     puntaje = Puntaje(
         puntaje_global=global_,
         infraestructura=por_categoria["infraestructura"],
@@ -135,9 +136,10 @@ def evaluar_riesgo(
         fuentes_faltantes=fuentes_faltantes,
         cobertura={
             "total_reglas": total,
+            "reglas_activas": activas,
             "evaluadas": evaluadas,
             "no_evaluadas": no_evaluadas,
-            "porcentaje_evaluadas": round(100 * len(evaluadas) / total) if total else 0,
+            "porcentaje_evaluadas": round(100 * len(evaluadas) / activas) if activas else 0,
         },
         version_motor=VERSION_MOTOR,
     )

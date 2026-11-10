@@ -7,11 +7,12 @@ export type Authorization = { id: string; alcance: string; expira_en: string | n
 export type Risk = { escaneo_id: string; puntaje_global: number; infraestructura: number; identidad_digital: number; configuracion: number; fuga_de_datos: number; es_parcial: boolean; fuentes_faltantes: string[]; calculado_en: string }
 export type Finding = { id: string; escaneo_id: string; categoria: string; severidad: string; confianza: number; estado: string; activo_id: string; fuente_id: string; regla_id: string | null; evidencia: Record<string, unknown> | null }
 export type SourceResult = {
-  id: string; fuente_id: string; estado: string; error: string | null
+  id: string; fuente_id: string; resultado_crudo_id: string | null; estado: string; error: string | null
   iniciado_en: string | null; finalizado_en: string | null
   observaciones_generadas: number; observaciones_nuevas: number; observaciones_duplicadas: number
   activos_nuevos: number; activos_existentes: number; descartadas: Record<string, number>
 }
+export type RawSourceResult = { id: string; estado: string; contenido: unknown; observado_en: string }
 export type Observation = { id: string; activo_id: string; fuente_id: string; atributo: string; observado_en: string }
 export type Explanation = { id: string; contenido: string; creado_en: string }
 export type Source = { id: string; nombre: string; tipo_acceso: string }
@@ -59,7 +60,7 @@ export async function loadClientData(organizationId: string): Promise<ClientData
   const [riskResult, findingResult, sourceStatusResult, observationResult, explanationResult] = await Promise.all([
     scanIds.length ? supabase.from('puntajes_riesgo').select('escaneo_id, puntaje_global, infraestructura, identidad_digital, configuracion, fuga_de_datos, es_parcial, fuentes_faltantes, calculado_en').in('escaneo_id', scanIds) : Promise.resolve({ data: [], error: null }),
     supabase.from('hallazgos').select('id, escaneo_id, categoria, severidad, confianza, estado, activo_id, fuente_id, regla_id, evidencia', { count: 'exact' }).limit(100),
-    latestFinishedScan ? supabase.from('resultados_fuentes').select('id, fuente_id, estado, error, iniciado_en, finalizado_en, observaciones_generadas, observaciones_nuevas, observaciones_duplicadas, activos_nuevos, activos_existentes, descartadas').eq('escaneo_id', latestFinishedScan.id) : Promise.resolve({ data: [], error: null }),
+    latestFinishedScan ? supabase.from('resultados_fuentes').select('id, fuente_id, resultado_crudo_id, estado, error, iniciado_en, finalizado_en, observaciones_generadas, observaciones_nuevas, observaciones_duplicadas, activos_nuevos, activos_existentes, descartadas').eq('escaneo_id', latestFinishedScan.id) : Promise.resolve({ data: [], error: null }),
     latestFinishedScan ? supabase.from('observaciones').select('id, activo_id, fuente_id, atributo, observado_en').eq('escaneo_id', latestFinishedScan.id).order('observado_en', { ascending: false }).limit(100) : Promise.resolve({ data: [], error: null }),
     latestFinishedScan ? supabase.from('explicaciones_ia').select('id, contenido, creado_en').eq('escaneo_id', latestFinishedScan.id).order('creado_en', { ascending: false }).limit(20) : Promise.resolve({ data: [], error: null }),
   ])
@@ -83,4 +84,14 @@ export async function loadClientData(organizationId: string): Promise<ClientData
     rules: (ruleResult.data ?? []) as Rule[],
     latestFinishedScan,
   }
+}
+
+export async function loadSourceRawResult(rawId: string): Promise<RawSourceResult | null> {
+  if (!supabase) throw new Error('Supabase no está configurado.')
+  const { data, error } = await supabase.from('resultados_crudos')
+    .select('id, estado, contenido, observado_en')
+    .eq('id', rawId)
+    .maybeSingle()
+  if (error) throw new Error('No se pudo cargar la respuesta original de esta fuente.')
+  return data as RawSourceResult | null
 }

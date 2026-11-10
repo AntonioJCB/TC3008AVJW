@@ -74,6 +74,7 @@ export default function HistoryChart({ scans }: { scans?: HistoryScan[] }) {
         {ranges.map((option) => <button key={option} type="button" aria-pressed={demoRange === option} className={demoRange === option ? 'active' : ''} onClick={() => setDemoRange(option)}>{option}</button>)}
       </div>}
     </div>
+    {live && <div className="history-chart-legend" aria-label="Estado de los análisis"><span><i className="completado" />Completo</span><span><i className="incompleto" />Parcial</span><span><i className="fallido" />Fallido</span><span className="history-chart-legend-note">Los tramos punteados incluyen resultados incompletos.</span></div>}
     <div className="history-chart-wrap">
       {points.length ? <svg viewBox="0 0 760 260" role="img" aria-label={`Puntajes del periodo: ${currentScans.map((scan) => `${scan.date}, ${scan.score} puntos, ${scan.status ?? 'completado'}`).join('; ')}`}>
         <defs>

@@ -14,6 +14,27 @@ hallazgos y puntajes, y exponer el estado por API. Los fallos de una fuente no
 cancelan las demás; el estado final puede ser `completado`, `incompleto` o
 `fallido`.
 
+## Interpretación del Risk Score
+
+El motor calcula un puntaje **por escaneo** con las observaciones de ese
+escaneo. Una fuente puede terminar correctamente y aportar dominios o IPs sin
+activar ninguna regla de riesgo; entonces el puntaje puede ser 0. El inventario
+de activos y los hallazgos históricos de la organización no se suman al
+puntaje de un escaneo nuevo. Si alguna fuente falla, `es_parcial` indica que
+el 0 puede subestimar la exposición.
+
+El catálogo contiene 16 reglas. La calibración `20261110000000` deja activas
+solo las seis con evaluador (`INFRA-001/002/003`, `CONF-001/002` e `IDEN-003`).
+Las diez pendientes siguen visibles en el catálogo, pero inactivas.
+Descubrir una IP o un dominio, por sí solo, no demuestra una vulnerabilidad y
+no incrementa el score. Los certificados vistos solo en Certificate
+Transparency y los correos públicos producen hallazgos informativos con peso
+0 hasta contar con evidencia verificable. Una CVE que la fuente haya marcado
+explícitamente como no verificada se descarta. El motor guarda la versión
+`1.1.0`; los puntajes históricos no se recalculan automáticamente.
+Las CVE sin un servicio concreto asociado se conservan como observaciones,
+pero tampoco aportan puntaje.
+
 ## Mapa del código
 
 - `app/main.py`: rutas HTTP, autenticación y comprobación del alcance.

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { HistoryScan } from '../../history/services/historyMock'
 import { riskTrends, type TrendRange } from '../services/overviewMock'
 
 const sampleCount = 32
@@ -37,8 +38,26 @@ function smoothPath(points: ReturnType<typeof chartPoints>) {
   }, `M ${points[0].x} ${points[0].y}`)
 }
 
-export default function RiskTrendChart({ actualValues }: { actualValues?: number[] } = {}) {
+function localDateKey(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function scoreColor(score: number) {
+  if (score >= 75) return 'var(--risk-critical)'
+  if (score >= 50) return 'var(--risk-high)'
+  if (score >= 25) return 'var(--risk-medium)'
+  return 'var(--risk-low)'
+}
+
+export default function RiskTrendChart({ actualScans }: { actualScans?: HistoryScan[] } = {}) {
   const [range, setRange] = useState<TrendRange>('30D')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const values = riskTrends[range]
   const [animatedValues, setAnimatedValues] = useState<number[]>(() => sampleTrend(riskTrends['30D']))
   const animatedValuesRef = useRef(animatedValues)
@@ -48,10 +67,17 @@ export default function RiskTrendChart({ actualValues }: { actualValues?: number
   const eventPoint = markerPoints[Math.max(0, markerPoints.length - 3)]
   const lastPoint = markerPoints[markerPoints.length - 1]
 
-  const actualPoints = actualValues?.map((value, index) => ({
-    x: 42 + index * (638 / Math.max(1, actualValues.length - 1)),
-    y: 190 - value / 100 * 156,
-    value,
+  const invalidDateRange = Boolean(dateFrom && dateTo && dateFrom > dateTo)
+  const filteredScans = actualScans?.filter((scan) => {
+    if (invalidDateRange) return false
+    const day = scan.occurredAt ? localDateKey(scan.occurredAt) : null
+    if (!day) return !dateFrom && !dateTo
+    return (!dateFrom || day >= dateFrom) && (!dateTo || day <= dateTo)
+  })
+  const actualPoints = filteredScans?.map((scan, index) => ({
+    x: filteredScans.length === 1 ? 361 : 42 + index * (638 / (filteredScans.length - 1)),
+    y: 190 - Math.max(0, Math.min(100, scan.score)) / 100 * 156,
+    ...scan,
   }))
 
   useEffect(() => {
@@ -78,9 +104,37 @@ export default function RiskTrendChart({ actualValues }: { actualValues?: number
   }, [range])
 
   if (actualPoints) {
-    const actualLine = actualPoints.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')
-    const actualArea = actualPoints.length > 1 ? `${actualLine} L ${actualPoints.at(-1)?.x} 190 L 42 190 Z` : ''
-    return <section className="content-card proposal-card trend-card" aria-labelledby="trend-title"><div className="card-heading"><h3 id="trend-title">EVOLUCIÓN DEL RIESGO</h3><span>{actualPoints.length} análisis con puntaje</span></div>{actualPoints.length ? <div className="trend-chart"><svg viewBox="0 0 700 220" role="img" aria-label={`Puntajes históricos: ${actualValues?.join(', ')}`}><defs><linearGradient id="live-risk-trend-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--teal)" stopOpacity=".22" /><stop offset="100%" stopColor="var(--teal)" stopOpacity="0" /></linearGradient></defs>{[0, 25, 50, 75, 100].map((value) => { const y = 190 - value / 100 * 156; return <g key={value}><line x1="42" x2="680" y1={y} y2={y} className="chart-gridline" /><text x="10" y={y + 4} className="axis-label">{value}</text></g> })}{actualArea && <path d={actualArea} fill="url(#live-risk-trend-fill)" />}<path d={actualLine} className="trend-line" />{actualPoints.map((point, index) => <g key={index}><circle cx={point.x} cy={point.y} r="5" className="chart-point" /><text x={point.x} y={point.y - 13} textAnchor="middle" className="chart-value">{point.value}</text></g>)}</svg></div> : <p className="client-empty">El historial aparecerá después del primer análisis.</p>}</section>
+    const hasDateFilter = Boolean(dateFrom || dateTo)
+    const labelStep = Math.max(1, Math.ceil(actualPoints.length / 5))
+    const showAllValues = actualPoints.length <= 20
+    const completeCount = filteredScans?.filter((scan) => scan.status === 'completado').length ?? 0
+    const partialCount = filteredScans?.filter((scan) => scan.status === 'incompleto').length ?? 0
+    const failedCount = filteredScans?.filter((scan) => scan.status === 'fallido').length ?? 0
+
+    return (
+      <section className="content-card proposal-card trend-card" aria-labelledby="trend-title">
+        <div className="card-heading">
+          <h3 id="trend-title">EVOLUCIÓN DEL RIESGO</h3>
+          <div className="trend-date-filter" role="group" aria-label="Filtrar análisis por fechas">
+            <label>Desde<input type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => setDateFrom(event.target.value)} /></label>
+            <label>Hasta<input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} /></label>
+            {hasDateFilter && <button type="button" onClick={() => { setDateFrom(''); setDateTo('') }}>Ver todo</button>}
+          </div>
+        </div>
+        {actualPoints.length ? <>
+          <div className="trend-chart"><svg viewBox="0 0 700 240" role="img" aria-label={`Puntajes del periodo: ${filteredScans?.map((scan) => `${scan.date}, ${scan.score} puntos, ${scan.status ?? 'completado'}`).join('; ')}`}>
+            <defs><linearGradient id="live-risk-scale" x1="0" y1="34" x2="0" y2="190" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="var(--risk-critical)" /><stop offset="25%" stopColor="var(--risk-high)" /><stop offset="50%" stopColor="var(--risk-medium)" /><stop offset="75%" stopColor="var(--risk-low)" /><stop offset="100%" stopColor="var(--risk-low)" /></linearGradient></defs>
+            {[0, 25, 50, 75, 100].map((value) => { const y = 190 - value / 100 * 156; return <g key={value}><line x1="42" x2="680" y1={y} y2={y} className="chart-gridline" /><text x="10" y={y + 4} className="axis-label">{value}</text></g> })}
+            {actualPoints.slice(1).map((point, index) => { const previous = actualPoints[index]; const partial = previous.status !== 'completado' || point.status !== 'completado'; return <path key={index} d={`M ${previous.x} ${previous.y} L ${point.x} ${point.y}`} className={`trend-line ${partial ? 'partial' : 'risk'}`} /> })}
+            {actualPoints.map((point, index) => {
+              const showDate = actualPoints.length <= 6 || index === 0 || index === actualPoints.length - 1 || index % labelStep === 0
+              return <g key={`${point.occurredAt ?? point.date}-${index}`}><title>{point.date}{point.occurredAt ? `, ${new Date(point.occurredAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}` : ''}: {point.score} puntos ({point.status ?? 'completado'})</title><circle cx={point.x} cy={point.y} r="5" className={`chart-point ${point.status ?? 'completado'}`} style={point.status === 'completado' ? { stroke: scoreColor(point.score) } : undefined} />{showAllValues && <text x={point.x} y={Math.max(20, point.y - 13)} textAnchor="middle" className="chart-value" style={point.status === 'completado' ? { fill: scoreColor(point.score) } : undefined}>{point.score}</text>}{showDate && <text x={point.x} y="222" textAnchor="middle" className="chart-date">{point.date}</text>}</g>
+            })}
+          </svg></div>
+          <div className="trend-status-legend" aria-label="Estado de los análisis"><span><i className="completado" />Completos {completeCount}</span><span><i className="incompleto" />Parciales {partialCount}</span><span><i className="fallido" />Fallidos {failedCount}</span></div>
+        </> : <p className="client-empty" role="status">{invalidDateRange ? 'La fecha inicial debe ser anterior o igual a la final.' : hasDateFilter ? 'No hay análisis con puntaje en estas fechas.' : 'El historial aparecerá después del primer análisis.'}</p>}
+      </section>
+    )
   }
 
   return (

@@ -14,15 +14,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import re
 from typing import Callable, Iterable, Sequence
 
 from app.osint_normalization import parsear_servicio
 from app.risk.modelos import Candidato, Obs
 
-# Un certificado que expiró hace más de esto probablemente es de un host abandonado
-# (crt.sh lista TODOS los certificados históricos): se ignora para no generar ruido.
+# crt.sh lista certificados históricos: estos hallazgos requieren confirmar el
+# certificado servido actualmente antes de aportar puntos al Risk Score.
 VENTANA_EXPIRADO_DIAS = 90
 DIAS_POR_EXPIRAR = 30
+PATRON_CVE = re.compile(r"CVE-\d{4}-\d{4,}", re.IGNORECASE)
 
 PUERTOS_ADMIN_REMOTA = {22: "SSH", 23: "Telnet", 3389: "RDP", 5900: "VNC", 5985: "WinRM", 5986: "WinRM"}
 PUERTOS_BASE_DE_DATOS = {
@@ -88,13 +90,22 @@ def _evaluador_puertos(puertos: dict[int, str]) -> Callable[[Sequence[Obs], date
 
 def _evaluar_cve(observaciones: Sequence[Obs], ahora: datetime) -> list[Candidato]:
     candidatos: list[Candidato] = []
-    for activo_id, grupo in _agrupar(o for o in observaciones if o.atributo == "cve").items():
-        cves = sorted({str(o.datos["cve"]) for o in grupo if o.datos.get("cve")})
-        if not cves:
-            continue
+    validas = (
+        o for o in observaciones
+        if o.tipo == "servicio" and o.atributo == "cve"
+        and isinstance(o.datos.get("cve"), str)
+        and PATRON_CVE.fullmatch(o.datos["cve"])
+        and o.datos.get("verificado") is not False
+    )
+    for activo_id, grupo in _agrupar(validas).items():
+        cves = sorted({o.datos["cve"].upper() for o in grupo})
         severidades = sorted({str(o.datos["severidad_fuente"]) for o in grupo if o.datos.get("severidad_fuente")})
         candidatos.append(
-            Candidato(activo_id, grupo, {"activo": grupo[0].valor, "cves": cves, "severidades_fuente": severidades})
+            Candidato(activo_id, grupo, {
+                "activo": grupo[0].valor, "cves": cves,
+                "severidades_fuente": severidades,
+                "verificado_por_fuente": any(o.datos.get("verificado") is True for o in grupo),
+            })
         )
     return candidatos
 

@@ -64,7 +64,7 @@ class Settings:
             shodan_api_key=shodan_api_key or None,
             theharvester_bin=os.getenv("THEHARVESTER_BIN", "theHarvester").strip(),
             theharvester_sources=os.getenv(
-                "THEHARVESTER_SOURCES", "certspotter"
+                "THEHARVESTER_SOURCES", "certspotter,hackertarget"
             ).strip(),
             spiderfoot_url=os.getenv(
                 "SPIDERFOOT_URL", "http://127.0.0.1:5001"

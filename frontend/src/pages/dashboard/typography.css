@@ -21,12 +21,9 @@
 }
 
 /* Jerarquía de página y navegación. */
-.proposal-dashboard :is(.content-intro h1, .findings-header h1, .history-header h1) {
+.proposal-dashboard .content-intro h1 {
   font-size: var(--type-page);
   font-weight: var(--weight-title);
-}
-.proposal-dashboard :is(.findings-header p, .history-header p) {
-  font-size: var(--type-body);
 }
 .proposal-dashboard .proposal-topbar .org-title h1 {
   font-size: var(--type-organization);
@@ -185,7 +182,7 @@
 .proposal-dashboard :is(.asset-secondary, .source-record-cell small, .finding-record-cell small, .history-entry-date small, .history-entry-change small, .history-entry-cell small, .relation-node small) {
   font-size: var(--type-secondary);
 }
-.proposal-dashboard :is(.asset-open-detail, .source-detail-action, .finding-open-detail, .history-header-actions button) {
+.proposal-dashboard :is(.asset-open-detail, .source-detail-action, .finding-open-detail) {
   font-size: var(--type-body);
   font-weight: var(--weight-title);
 }

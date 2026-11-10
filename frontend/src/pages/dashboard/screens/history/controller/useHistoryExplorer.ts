@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { historyEvents, type HistoryEvent, type HistoryFilter, type HistoryRange } from '../services/historyMock'
+import { historyEvents, type HistoryEvent, type HistoryFilter } from '../services/historyMock'
 
 export const historyPageSize = 8
 
@@ -10,7 +10,6 @@ function normalize(value: string) {
 export function useHistoryExplorer(records: HistoryEvent[] = historyEvents) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<HistoryFilter>('all')
-  const [range, setRange] = useState<HistoryRange>('30D')
   const [page, setPage] = useState(0)
 
   const searchedEvents = useMemo(() => {
@@ -34,7 +33,7 @@ export function useHistoryExplorer(records: HistoryEvent[] = historyEvents) {
   function changeFilter(value: HistoryFilter) { setFilter(value); setPage(0) }
 
   return {
-    query, changeQuery, filter, changeFilter, filterCounts, range, setRange,
+    query, changeQuery, filter, changeFilter, filterCounts,
     visibleEvents, page, pageCount, changePage: setPage,
   }
 }

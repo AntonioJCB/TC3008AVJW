@@ -22,7 +22,7 @@ const filters: { id: SourceFilter; label: string }[] = [
 export default function SourceInventory({ query, setQuery, filter, setFilter, filterCounts, visibleSources, selectedSource, selectSource }: Props) {
   return <section className="content-card source-inventory" aria-labelledby="source-inventory-heading">
     <div className="source-inventory-header">
-      <div><h2 id="source-inventory-heading">Inventario de fuentes</h2><p>{visibleSources.length} {visibleSources.length === 1 ? 'fuente visible' : 'fuentes visibles'}</p></div>
+      <h2 id="source-inventory-heading">Inventario de fuentes</h2>
       <label className="source-search"><Search size={18} aria-hidden="true" /><span className="sr-only">Buscar fuente</span><input type="search" placeholder="Buscar fuente o tipo de dato" value={query} onChange={(event) => setQuery(event.target.value)} />{query && <button type="button" aria-label="Limpiar búsqueda" onClick={() => setQuery('')}><X size={16} /></button>}</label>
     </div>
     <div className="source-filters" role="group" aria-label="Filtrar por salud">

@@ -75,10 +75,26 @@ class CveTests(unittest.TestCase):
             obs("servicio", "203.0.113.10:22/tcp", "cve", cve="CVE-2020-0001", severidad_fuente="high", fuente="SpiderFoot"),
             obs("ip", "203.0.113.10", "cve", cve="CVE-2024-0001"),
         ])
-        self.assertEqual(codigos(r), ["INFRA-003", "INFRA-003"])
+        self.assertEqual(codigos(r), ["INFRA-003"])
         por_activo = {h.evidencia["detalle"]["activo"]: h for h in r.hallazgos}
         self.assertEqual(por_activo["203.0.113.10:22/tcp"].evidencia["detalle"]["cves"], ["CVE-2018-15473", "CVE-2020-0001"])
         self.assertEqual(por_activo["203.0.113.10:22/tcp"].confianza, 0.65)  # 2 fuentes
+        self.assertNotIn("203.0.113.10", por_activo)  # IP sin servicio asociado no confirma la CVE
+
+    def test_descarta_cve_no_verificada_por_la_fuente(self):
+        r = evaluar([
+            obs("servicio", "203.0.113.10:22/tcp", "cve", cve="CVE-2024-12345", verificado=False),
+            obs("servicio", "203.0.113.10:22/tcp", "cve", cve="CVE-2024-12345", verificado=True, fuente="SpiderFoot"),
+            obs("servicio", "203.0.113.10:22/tcp", "cve", cve="CVE-2024-12345-extra"),
+        ])
+        self.assertEqual(codigos(r), ["INFRA-003"])
+        self.assertEqual(r.hallazgos[0].evidencia["fuentes"], ["SpiderFoot"])
+        self.assertTrue(r.hallazgos[0].evidencia["detalle"]["verificado_por_fuente"])
+
+    def test_solo_cve_descartada_no_genera_puntaje(self):
+        r = evaluar([obs("servicio", "203.0.113.10:22/tcp", "cve", cve="CVE-2024-12345", verificado=False)])
+        self.assertEqual(r.hallazgos, [])
+        self.assertEqual(r.puntaje.puntaje_global, 0)
 
 
 class CertificadosTests(unittest.TestCase):
@@ -124,6 +140,18 @@ class CorreosTests(unittest.TestCase):
 
 
 class PuntajesTests(unittest.TestCase):
+    def test_senales_informativas_se_guardan_sin_aumentar_el_score(self):
+        reglas = [
+            Regla(r.id, r.codigo, r.nombre, r.categoria, r.severidad, 0 if r.codigo in {"CONF-001", "CONF-002", "IDEN-003"} else r.peso, r.esta_activa)
+            for r in CATALOGO
+        ]
+        r = evaluar([
+            obs("subdominio", "api.ej.com", "certificado", fuente="crt.sh", valido_hasta=(AHORA - timedelta(days=2)).isoformat()),
+            obs("correo", "contacto@ej.com", "descubierto", fuente="theHarvester"),
+        ], reglas=reglas)
+        self.assertEqual(codigos(r), ["CONF-001", "IDEN-003"])
+        self.assertEqual(r.puntaje.puntaje_global, 0)
+
     def test_combinar_riesgos(self):
         self.assertEqual(combinar_riesgos([]), 0)
         self.assertAlmostEqual(combinar_riesgos([50, 50]), 75)
@@ -169,9 +197,10 @@ class CoberturaYFuentesTests(unittest.TestCase):
     def test_cobertura_distingue_inactiva_y_sin_evaluador(self):
         c = evaluar([]).puntaje.cobertura
         self.assertEqual(c["total_reglas"], 8)
+        self.assertEqual(c["reglas_activas"], 7)
         self.assertEqual(c["evaluadas"], ["CONF-001", "CONF-002", "IDEN-003", "INFRA-001", "INFRA-002", "INFRA-003"])
         self.assertEqual(self.motivos(evaluar([])), {"CONF-003": "sin_evaluador", "FUGA-001": "inactiva"})
-        self.assertEqual(c["porcentaje_evaluadas"], 75)
+        self.assertEqual(c["porcentaje_evaluadas"], 86)
 
     def test_si_falla_shodan_pero_spiderfoot_responde_las_reglas_de_infra_se_evaluan_igual(self):
         estado = {**TODAS_OK, "Shodan": "fallido"}

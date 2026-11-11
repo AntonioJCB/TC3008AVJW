@@ -16,6 +16,7 @@ import { navigation, type DashboardSection } from './navigation'
 import { loadClientData, type ClientData, type Risk, type Scan } from './services/clientData'
 import { createScan, executeScan, getScanProgress, ScanRequestError, stopScan, type ScanProgress } from './services/scanActions'
 import { liveFindings, liveHistoryScans } from './services/liveAdapters'
+import { exportOverviewToExcel } from './services/exportOverview'
 import './dashboard.css'
 import './typography.css'
 import './clientPortal.css'
@@ -253,6 +254,19 @@ function ClientSection({ section, data, latest }: { section: DashboardSection; d
 }
 
 function Summary({ data, latest }: { data: ClientData; latest: Scan | null }) {
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+  async function exportExcel() {
+    setExporting(true)
+    setExportError(null)
+    try {
+      await exportOverviewToExcel(data, latest)
+    } catch {
+      setExportError('No se pudo generar el archivo de Excel. Intenta de nuevo.')
+    } finally {
+      setExporting(false)
+    }
+  }
   const risk = riskFor(data, latest)
   const priorityFindings = liveFindings(data)
   const categories = risk ? [['Infraestructura', risk.infraestructura], ['Identidad digital', risk.identidad_digital], ['Configuración', risk.configuracion], ['Fuga de datos', risk.fuga_de_datos]] as const : []
@@ -278,6 +292,12 @@ function Summary({ data, latest }: { data: ClientData; latest: Scan | null }) {
     <section className="content-card proposal-card priorities-card"><div className="card-heading"><h3>HALLAZGOS PRIORITARIOS</h3><Link to="/home/hallazgos">Ver todos los hallazgos</Link></div>{priorityFindings.length ? <div className="priority-table-wrap"><table className="priority-table"><thead><tr><th>SEVERIDAD</th><th>HALLAZGO</th><th>ACTIVO</th><th>CONFIANZA</th><th /></tr></thead><tbody>{priorityFindings.slice(0, 5).map((finding) => <tr key={finding.id}><td><span className={`priority-severity ${finding.severity === 'critical' ? 'critical' : 'high'}`}>{finding.severity === 'critical' ? 'CRÍTICA' : finding.severity === 'high' ? 'ALTA' : finding.severity === 'medium' ? 'MEDIA' : 'BAJA'}</span></td><td><strong>{finding.title}</strong></td><td>{finding.asset}</td><td>{finding.confidence}%</td><td><Link to="/home/hallazgos">Ver</Link></td></tr>)}</tbody></table></div> : <Empty>No hay hallazgos registrados.</Empty>}</section>
     <div className="overview-bottom-grid"><section className="content-card proposal-card inventory-card"><div className="card-heading"><h3>INVENTARIO DE ACTIVOS</h3><Link to="/home/activos">Explorar activos</Link></div>{types.length ? <div className="inventory-bars">{types.map(({ label, count }) => <div className="inventory-bar-row" key={label}><span>{label}</span><strong>{count}</strong><div className="bar-track"><i className="tone-info" style={{ width: `${count / maxType * 100}%` }} /></div></div>)}</div> : <Empty>Aún no hay activos descubiertos.</Empty>}</section><section className="content-card proposal-card sources-card"><div className="card-heading"><h3>SALUD DE FUENTES</h3><Link to="/home/fuentes">Detalles</Link></div><div className="source-health-list">{data.sources.map((source) => <div className={`source-health-row${sourceResults.get(source.id)?.estado === 'fallido' ? ' error' : ''}`} key={source.id}><span className="source-status-dot" /><strong>{source.nombre}</strong><em>{sourceResults.get(source.id)?.estado ?? 'Sin ejecutar'}</em></div>)}</div><div className="sources-foot"><span>Cobertura del análisis</span><strong>{coverage}%</strong></div><div className="source-progress" role="img" aria-label={`Cobertura de fuentes: ${coverage}%`}><i style={{ width: `${coverage}%` }} /></div></section></div>
     <section className="content-card proposal-card changes-card"><div className="card-heading"><h3>ACTIVIDAD RECIENTE</h3><Link to="/home/historial">Abrir historial</Link></div>{data.scans.length ? <div className="milestone-grid">{data.scans.slice(0, 4).map((scan) => <div className="milestone" key={scan.id}><span className="milestone-ring tone-info" /><div><strong>Análisis {scan.estado}</strong><p>{dateTime(scan.finalizado_en ?? scan.iniciado_en)}</p><small>{riskFor(data, scan)?.puntaje_global ?? '—'} puntos de riesgo</small></div></div>)}</div> : <Empty>Todavía no hay análisis registrados.</Empty>}</section>
+    <div className="overview-export">
+      <button type="button" className="overview-export-button" onClick={() => void exportExcel()} disabled={exporting}>
+        {exporting ? 'Generando Excel…' : 'Exportar a Excel'}
+      </button>
+      {exportError && <span className="client-error" role="alert">{exportError}</span>}
+    </div>  
   </div>
 }
 

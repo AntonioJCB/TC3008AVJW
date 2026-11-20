@@ -2,7 +2,7 @@
 
   pendiente -> ejecutando -> completado | incompleto | fallido
 
-Un escaneo corre las cuatro fuentes en paralelo. Cada fuente se guarda apenas
+Un escaneo corre las fuentes OSINT pasivas activas en paralelo. Cada fuente se guarda apenas
 termina (no espera a la más lenta) y, si falla, las demás siguen. Al final:
   completado : todas las fuentes terminaron bien
   incompleto : al menos una falló y al menos una terminó bien
@@ -21,6 +21,7 @@ from typing import Any, Mapping
 
 from fastapi import HTTPException, status
 from fastapi.concurrency import run_in_threadpool
+from httpx import TransportError
 from postgrest.exceptions import APIError
 from supabase import Client
 
@@ -28,10 +29,12 @@ from app.ingestion import ingestar_resultado
 from app.orchestrators import OrchestratorSettings, Runner, run_all
 from app.risk.persistencia import calcular_y_guardar
 from app.settings import Settings
+from app.source_policy import ACTIVE_SOURCES
+from app.scan_report import inventory, build_coverage
 
 logger = logging.getLogger(__name__)
 
-SOURCE_NAMES = ("crt.sh", "Shodan", "theHarvester", "SpiderFoot")
+SOURCE_NAMES = ACTIVE_SOURCES
 
 PENDIENTE = "pendiente"
 EJECUTANDO = "ejecutando"
@@ -56,6 +59,26 @@ _active_scans: dict[str, ScanControl] = {}
 
 def register_scan_control(scan_id: str) -> None:
     _active_scans[scan_id] = ScanControl()
+
+
+def scan_job_active(scan_id: str) -> bool:
+    return scan_id in _active_scans
+
+
+async def calculate_risk_with_retry(
+    client: Client, scan_id: str, *, attempts: int = 4, delay_seconds: float = 1.0, report: dict | None = None,
+) -> None:
+    """Reintenta cortes temporales de red sin ocultar errores permanentes del motor."""
+    for attempt in range(attempts):
+        try:
+            await run_in_threadpool(calcular_y_guardar, client, scan_id, **({"report": report} if report is not None else {}))
+            return
+        except TransportError:
+            if attempt + 1 == attempts:
+                raise
+            wait = delay_seconds * 2 ** attempt
+            logger.warning("Supabase no respondió al calcular el riesgo de %s; reintento %s/%s en %.1f s", scan_id, attempt + 2, attempts, wait)
+            await asyncio.sleep(wait)
 
 
 def _now() -> str:
@@ -109,15 +132,16 @@ def audit(
 def compute_scan_state(results: Mapping[str, Mapping[str, Any]]) -> str:
     """Estado final a partir del resultado de cada fuente. Una fuente ausente cuenta como fallida."""
     completed = sum(1 for name in SOURCE_NAMES if results.get(name, {}).get("estado") == COMPLETADO)
-    if completed == len(SOURCE_NAMES):
+    if completed == len(SOURCE_NAMES) and not any(results.get(name, {}).get("error") for name in SOURCE_NAMES):
         return COMPLETADO
     return FALLIDO if completed == 0 else INCOMPLETO
 
 
 def scan_message(scan_state: str, results: Mapping[str, Mapping[str, Any]]) -> str:
     """Frase para el usuario: qué falló y qué no."""
-    ok = [n for n in SOURCE_NAMES if results.get(n, {}).get("estado") == COMPLETADO]
+    ok = [n for n in SOURCE_NAMES if results.get(n, {}).get("estado") == COMPLETADO and not results.get(n, {}).get("error")]
     failed = [n for n in SOURCE_NAMES if results.get(n, {}).get("estado") == "fallido"]
+    partial = [n for n in SOURCE_NAMES if results.get(n, {}).get("estado") == COMPLETADO and results.get(n, {}).get("error")]
 
     def razon(name: str) -> str:
         error = str(results[name].get("error") or "").strip()
@@ -126,15 +150,17 @@ def scan_message(scan_state: str, results: Mapping[str, Mapping[str, Any]]) -> s
     if scan_state == PENDIENTE:
         return "El escaneo está pendiente de ejecución."
     if scan_state == EJECUTANDO:
-        return f"El escaneo está en curso: {len(ok) + len(failed)} de {len(SOURCE_NAMES)} fuentes han terminado."
+        return f"El escaneo está en curso: {len(ok) + len(failed) + len(partial)} de {len(SOURCE_NAMES)} fuentes han terminado."
     if scan_state == CANCELADO:
         return "Análisis detenido. Se conservaron los resultados de las fuentes que habían terminado."
     if scan_state == COMPLETADO:
-        return f"Escaneo completo: las {len(SOURCE_NAMES)} fuentes terminaron correctamente."
+        return f"Consultas finalizadas: las {len(SOURCE_NAMES)} fuentes terminaron correctamente. Consulta el reporte para conocer la cobertura y sus limitaciones."
     if scan_state == INCOMPLETO:
         return (
-            f"Escaneo incompleto. Fallaron: {', '.join(razon(n) for n in failed)}. "
-            f"Terminaron correctamente: {', '.join(ok)}."
+            "Escaneo incompleto. "
+            + (f"Fallaron: {', '.join(razon(n) for n in failed)}. " if failed else "")
+            + (f"Con incidencias: {', '.join(razon(n) for n in partial)}. " if partial else "")
+            + f"Terminaron correctamente: {', '.join(ok)}."
         )
     if scan_state == FALLIDO:
         return f"Escaneo fallido: ninguna fuente terminó correctamente. {', '.join(razon(n) for n in failed)}."
@@ -227,6 +253,8 @@ def _persist_source(
     source_name: str,
     domain: str,
     outcome: dict[str, Any],
+    previous: dict[str, Any] | None = None,
+    nvd_api_key: str | None = None,
 ) -> dict[str, Any]:
     """Normaliza y guarda el resultado de UNA fuente y registra su estado."""
     summary: dict[str, Any] = {
@@ -241,7 +269,7 @@ def _persist_source(
     }
     source_state = outcome["estado"]
     error = outcome.get("error")
-    if source_state == "completado":
+    if source_state == "completado" or (source_name in {"crt.sh", "theHarvester", "SpiderFoot"} and outcome.get("contenido") is not None):
         try:
             summary = ingestar_resultado(
                 client,
@@ -252,11 +280,35 @@ def _persist_source(
                 raw=outcome["contenido"],
                 domain=domain,
                 ips_in_scope=outcome.get("ips_en_alcance") or None,
+                nvd_api_key=nvd_api_key,
+                exploit_enrichment=True,
             )
-        except Exception:
+            if previous and summary["ya_procesado"]:
+                summary = {**summary, **{
+                    key: previous[key] for key in (
+                        "resultado_crudo_id", "observaciones_generadas", "activos_nuevos",
+                        "activos_existentes", "observaciones_nuevas", "observaciones_duplicadas", "descartadas",
+                    )
+                }}
+            elif previous:
+                previous_new_assets = previous.get("activos_nuevos", 0)
+                summary["activos_nuevos"] += previous_new_assets
+                summary["activos_existentes"] = max(0, summary["activos_existentes"] - previous_new_assets)
+                summary["observaciones_nuevas"] += previous.get("observaciones_nuevas", 0)
+                summary["observaciones_duplicadas"] = max(
+                    0, summary["observaciones_generadas"] - summary["observaciones_nuevas"]
+                )
+        except Exception as failure:
             logger.exception("No se pudo normalizar o guardar el resultado de %s", source_name)
-            source_state = "fallido"
-            error = "No se pudo normalizar o guardar el resultado de esta fuente"
+            detail = ("No se pudo guardar el resultado por un corte de conexión con Supabase"
+                      if isinstance(failure, TransportError)
+                      else "No se pudo normalizar o guardar el resultado de esta fuente")
+            if previous and previous.get("estado") == "completado":
+                summary = {key: previous[key] for key in summary}
+                error = "; ".join(filter(None, [error, detail]))[:1000]
+            else:
+                source_state = "fallido"
+                error = "; ".join(filter(None, [error, detail]))[:1000]
     status_data = {**summary, "estado": source_state, "error": error, "finalizado_en": _now()}
     _execute(
         client.table("resultados_fuentes")
@@ -312,30 +364,46 @@ async def run_scan_job(
     source_ids: dict[str, str],
     domain: str,
     runners: dict[str, Runner] | None = None,
+    targets: list[str] | None = None,
+    ip_scope: str | None = None,
+    excluded_targets: dict[str, str] | None = None,
 ) -> str:
     """Corre las fuentes, guarda cada una al terminar, cierra el escaneo y calcula el riesgo."""
     scan_id = scan["id"]
     organization_id = scan["organizacion_id"]
     control = _active_scans.setdefault(scan_id, ScanControl())
     persisted: dict[str, dict[str, Any]] = {}
+    outcomes = {}
+    coverage = None
 
     async def on_result(name: str, outcome: dict[str, Any]) -> None:
         async with control.persistence_lock:
             if control.cancel_requested.is_set():
                 return
             try:
-                persisted[name] = await run_in_threadpool(
-                    _persist_source, client, organization_id, scan_id, source_ids[name], name, domain, outcome
+                args = (
+                    client, organization_id, scan_id, source_ids[name], name, domain, outcome,
+                    persisted.get(name), getattr(settings, "nvd_api_key", None),
                 )
+                persisted[name] = await run_in_threadpool(_persist_source, *args)
             except Exception:
                 logger.exception("No se pudo persistir el resultado de %s", name)
-                persisted[name] = {"estado": "fallido", "error": "No se pudo persistir el resultado de esta fuente"}
+                if persisted.get(name, {}).get("estado") == "completado":
+                    persisted[name]["error"] = "No se pudo ampliar el resultado de esta fuente"
+                else:
+                    persisted[name] = {"estado": "fallido", "error": "No se pudo persistir el resultado de esta fuente"}
 
     try:
-        collectors = asyncio.create_task(run_all(
-            domain, orchestrator_settings(settings), runners=runners,
-            on_result=on_result, timeout_seconds=settings.scan_timeout_seconds,
-        ))
+        run_options = {
+            "runners": runners, "on_result": on_result,
+            "timeout_seconds": settings.scan_timeout_seconds,
+        }
+        if targets is not None:
+            run_options["targets"] = targets
+            run_options["max_targets"] = settings.scan_max_targets
+            run_options["ip_scope"] = ip_scope
+            run_options["excluded_targets"] = excluded_targets or {}
+        collectors = asyncio.create_task(run_all(domain, orchestrator_settings(settings), **run_options))
         cancelled = asyncio.create_task(control.cancel_requested.wait())
         try:
             done, _ = await asyncio.wait({collectors, cancelled}, return_when=asyncio.FIRST_COMPLETED)
@@ -344,7 +412,7 @@ async def run_scan_job(
                 await asyncio.gather(collectors, return_exceptions=True)
                 return CANCELADO
             try:
-                await collectors
+                outcomes = await collectors
             except Exception:
                 logger.exception("Falló la ejecución de las fuentes del escaneo %s", scan_id)
         finally:
@@ -354,6 +422,13 @@ async def run_scan_job(
             if control.cancel_requested.is_set():
                 return CANCELADO
             scan_state = compute_scan_state(persisted)
+            try:
+                assets = await run_in_threadpool(inventory, client, organization_id)
+                coverage = build_coverage(assets, outcomes, ip_scope or domain, targets or [domain])
+                if coverage["objetivos_pendientes"] and scan_state == COMPLETADO:
+                    scan_state = INCOMPLETO
+            except Exception:
+                logger.exception("No se pudo construir la cobertura por activo")
             finished = await run_in_threadpool(_finish_scan, client, scan_id, scan_state)
             if finished is False:
                 return CANCELADO
@@ -366,18 +441,20 @@ async def run_scan_job(
             action="escaneo_finalizado",
             scan_id=scan_id,
             detail={
+                "infraestructura": coverage,
                 "estado": scan_state,
-                "fuentes_ok": [n for n in SOURCE_NAMES if persisted.get(n, {}).get("estado") == COMPLETADO],
+                "objetivos": targets or [domain],
+                "fuentes_ok": [n for n in SOURCE_NAMES if persisted.get(n, {}).get("estado") == COMPLETADO and not persisted.get(n, {}).get("error")],
                 "fuentes_fallidas": {
                     n: persisted.get(n, {}).get("error") or "sin resultado"
                     for n in SOURCE_NAMES
-                    if persisted.get(n, {}).get("estado") != COMPLETADO
+                    if persisted.get(n, {}).get("estado") != COMPLETADO or persisted.get(n, {}).get("error")
                 },
             },
         )
 
         try:
-            await run_in_threadpool(calcular_y_guardar, client, scan_id)
+            await calculate_risk_with_retry(client, scan_id, **({"report": coverage} if coverage is not None else {}))
         except Exception:
             # El escaneo ya quedó cerrado; el riesgo se puede recalcular con
             # POST /api/escaneos/{id}/riesgo/recalcular.

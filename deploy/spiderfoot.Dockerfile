@@ -23,6 +23,9 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && mkdir -p "$SPIDERFOOT_DATA" "$SPIDERFOOT_LOGS" "$SPIDERFOOT_CACHE" \
     && chown -R spiderfoot:spiderfoot "$SPIDERFOOT_DATA"
 
+COPY backend/app/spiderfoot_passive.py /opt/spiderfoot/baxter_passive.py
+COPY deploy/spiderfoot/modules/ /opt/spiderfoot/modules/
+
 USER spiderfoot
 EXPOSE 5001
 CMD ["python", "sf.py", "-l", "0.0.0.0:5001"]

@@ -65,6 +65,18 @@ class NormalizationTests(unittest.TestCase):
         self.assertEqual(sorted(item["datos"]["comodin"] for item in certificates), [False, False, True])
         self.assertEqual(result["descartadas"], [{"motivo": "fuera_de_alcance", "entrada": "otro.org"}])
 
+    def test_crtsh_report_preserves_real_certificate_fields_and_deduplicates(self) -> None:
+        entry = {
+            "min_cert_id": 42, "min_entry_timestamp": "2026-11-01T12:00:00",
+            "serial_number": "abc", "name_value": "api.ejemplo.com\n*.ejemplo.com",
+            "not_before": "2026-10-01T00:00:00", "not_after": "2027-01-01T00:00:00",
+        }
+        result = adaptar("crt.sh", {"version": 1, "entries": [entry, entry], "queries": []}, DOMAIN)
+        certificates = [item for item in result["observaciones"] if item["atributo"] == "certificado"]
+        self.assertEqual(len(certificates), 2)
+        self.assertEqual({item["datos"]["crtsh_id"] for item in certificates}, {42})
+        self.assertEqual({item["observado_en"] for item in certificates}, {"2026-11-01T12:00:00.000Z"})
+
     def test_shodan_match_payload_is_adapted_and_third_party_hostname_discarded(self) -> None:
         raw = {
             "matches": [{
@@ -110,6 +122,18 @@ class NormalizationTests(unittest.TestCase):
         })
         self.assertEqual(len([item for item in result["observaciones"] if item["atributo"] == "resuelve_a"]), 1)
 
+    def test_theharvester_jsonl_atribuye_proveedor_y_descarta_fuera_de_alcance(self) -> None:
+        result = adaptar("theHarvester", {"items": [
+            {"type": "hostname", "value": "api.ejemplo.com", "sources": ["certspotter"]},
+            {"type": "hostname", "value": "otro.net", "sources": ["rapiddns"]},
+            {"type": "email", "value": "admin@ejemplo.com", "sources": ["rapiddns"]},
+            {"type": "url", "value": "https://docs.ejemplo.com/manual", "sources": ["urlscan"]},
+        ]}, DOMAIN)
+        observations = result["observaciones"]
+        self.assertEqual({item["valor"] for item in observations}, {"api.ejemplo.com", "admin@ejemplo.com", "docs.ejemplo.com"})
+        self.assertEqual(observations[0]["datos"]["proveedores"], ["certspotter"])
+        self.assertTrue(any(item["motivo"] == "fuera_de_alcance" for item in result["descartadas"]))
+
     def test_spiderfoot_maps_cve_to_parent_service_and_handles_email_alias(self) -> None:
         result = adaptar(
             "SpiderFoot",
@@ -132,6 +156,16 @@ class NormalizationTests(unittest.TestCase):
         self.assertEqual(cve["valor"], "203.0.113.40:8080/tcp")
         self.assertEqual(cve["datos"]["severidad_fuente"], "high")
         self.assertIn("sin_activo_asociado", [item["motivo"] for item in result["descartadas"]])
+
+    def test_spiderfoot_conserva_relacion_dns_del_host_autorizado(self) -> None:
+        result = adaptar("SpiderFoot", [
+            {"event_type": "IP_ADDRESS", "data": "198.51.100.7", "source_data": "api.ejemplo.com", "module": "sfp_dnsresolve"},
+            {"event_type": "IP_ADDRESS", "data": "198.51.100.8", "source_data": "ajeno.net", "module": "sfp_dnsresolve"},
+        ], DOMAIN)
+        relations = [item for item in result["observaciones"] if item["atributo"] == "resuelve_a"]
+        self.assertEqual(len(relations), 1)
+        self.assertEqual(relations[0]["valor"], "api.ejemplo.com")
+        self.assertEqual(relations[0]["datos"]["ip"], "198.51.100.7")
 
 
 if __name__ == "__main__":

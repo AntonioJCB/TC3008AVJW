@@ -29,11 +29,13 @@
 .scan-source-heading strong { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .scan-source-state { padding: 4px 7px; border-radius: 100px; font-size: 11px; white-space: nowrap; }
 .scan-source-state.done { color: var(--teal); background: color-mix(in srgb, var(--teal) 12%, transparent); }
+.scan-source-state.partial { color: var(--bronze); background: color-mix(in srgb, var(--bronze) 13%, transparent); }
 .scan-source-state.failed, .scan-source-state.stopped { color: var(--coral); background: color-mix(in srgb, var(--coral) 11%, transparent); }
 .scan-source-state.running { color: var(--bronze); background: color-mix(in srgb, var(--bronze) 13%, transparent); }
 .scan-source-bar { height: 16px; border-radius: 5px; background-image: linear-gradient(to right, transparent calc(25% - 1px), var(--line-soft) 25%, transparent calc(25% + 1px)), linear-gradient(to right, transparent calc(50% - 1px), var(--line-soft) 50%, transparent calc(50% + 1px)), linear-gradient(to right, transparent calc(75% - 1px), var(--line-soft) 75%, transparent calc(75% + 1px)); }
 .scan-source-fill { display: block; min-width: 3px; height: 100%; border-radius: inherit; transition: width 1s linear; }
 .scan-source-fill.done { background: var(--teal); }
+.scan-source-fill.partial { background: var(--bronze); }
 .scan-source-fill.failed, .scan-source-fill.stopped { background: var(--coral); }
 .scan-source-fill.running { background: linear-gradient(90deg, var(--bronze), color-mix(in srgb, var(--bronze) 55%, white)); }
 .scan-source-facts { justify-content: space-between; gap: 9px; min-width: 0; color: var(--muted); font-size: 12px; }

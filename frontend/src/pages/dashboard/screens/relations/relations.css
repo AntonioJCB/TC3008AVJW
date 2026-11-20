@@ -47,6 +47,7 @@
 .relation-node.tone-critical > span { color: var(--risk-critical); }
 .relation-node strong { max-width: 100%; overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .relation-node small { color: var(--meta); font-size: 12px; white-space: nowrap; }
+.relation-node .relation-node-source { max-width: 100%; overflow: hidden; color: var(--theme-active); text-overflow: ellipsis; }
 .relation-node.root { width: 174px; min-height: 114px; }
 
 .relations-side { display: grid; align-content: start; gap: 14px; min-width: 0; }
@@ -56,7 +57,8 @@
 .relation-focus-card h3 { overflow-wrap: anywhere; margin: 17px 0 9px; color: var(--ink); font-size: 23px; letter-spacing: -.035em; }
 .relation-focus-card p { min-height: 40px; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
 .relation-impact { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 21px; padding: 17px 0; border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); color: var(--muted); font-size: 13px; }
-.relation-impact strong { color: var(--risk-critical); font-size: 17px; white-space: nowrap; }
+.relation-impact strong { color: var(--ink); font-size: 17px; white-space: nowrap; }
+.relation-impact.is-critical strong { color: var(--risk-critical); }
 .relation-facts { margin: 20px 0 0; padding: 4px 15px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--theme-field); }
 .relation-facts > div { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 12px 0; }
 .relation-facts > div + div { border-top: 1px solid var(--line-soft); }

@@ -41,7 +41,7 @@ export default function RelationGraph({ selectedNodeId, selectedRoute, onSelectN
           style={{ left: `${node.x}%`, top: `${node.y}%` }}
           aria-pressed={node.id === selectedNodeId}
           onClick={() => onSelectNode(node.id)}
-        ><span>{node.badge}</span><strong>{node.name}</strong><small>{node.caption}</small></button>)}
+        ><span>{node.badge}</span><strong>{node.name}</strong><small>{node.caption}</small>{node.sources.length > 0 && <small className="relation-node-source">{node.sources.join(' · ')}</small>}</button>)}
       </div>
     </div>
   </section>

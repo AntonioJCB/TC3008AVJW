@@ -28,8 +28,12 @@ services:
       dockerfile: deploy/spiderfoot.Dockerfile
     ports:
       - "127.0.0.1:5001:5001"
+    env_file:
+      - path: spiderfoot.env
+        required: false
     volumes:
       - spiderfoot-data:/var/lib/spiderfoot
+      - ./deploy/spiderfoot-ca:/opt/baxtersec-ca:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5001/', timeout=5).close()"]
       interval: 15s

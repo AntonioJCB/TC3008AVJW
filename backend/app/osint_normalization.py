@@ -6,6 +6,12 @@ import json
 import re
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlsplit
+from app.spiderfoot_passive import (
+    MODULES as PASSIVE_MODULES,
+    PASSIVE_DNS_MODULES,
+    reports as passive_reports,
+)
 ASSET_TYPES = {"dominio", "subdominio", "ip", "correo", "servicio"}
 ATTRIBUTES = {
     "descubierto",
@@ -254,6 +260,8 @@ def _format_error(result: dict[str, Any], expected: str, received: Any) -> dict[
 
 def _adapt_crtsh(raw: Any, domain: str) -> dict[str, Any]:
     result = _new_result()
+    if isinstance(raw, dict) and raw.get("version") == 1:
+        raw = raw.get("entries")
     if not isinstance(raw, list):
         return _format_error(result, "un arreglo", raw)
     for entry in raw:
@@ -264,7 +272,9 @@ def _adapt_crtsh(raw: Any, domain: str) -> dict[str, Any]:
         for field in (entry.get("name_value"), entry.get("common_name")):
             if isinstance(field, str):
                 names.update(line.strip() for line in re.split(r"\r?\n", field) if line.strip())
-        observed_at = fecha_iso(entry.get("entry_timestamp")) or fecha_iso(entry.get("not_before"))
+        observed_at = (fecha_iso(entry.get("entry_timestamp"))
+                       or fecha_iso(entry.get("min_entry_timestamp"))
+                       or fecha_iso(entry.get("not_before")))
         for name in names:
             def certificate_facts(wildcard: bool) -> list[dict[str, Any]]:
                 return [
@@ -273,7 +283,7 @@ def _adapt_crtsh(raw: Any, domain: str) -> dict[str, Any]:
                         "atributo": "certificado",
                         "observado_en": observed_at,
                         "datos": {
-                            "crtsh_id": entry.get("id"),
+                            "crtsh_id": entry.get("id") or entry.get("min_cert_id"),
                             "serie": entry.get("serial_number"),
                             "emisor": entry.get("issuer_name"),
                             "valido_desde": fecha_iso(entry.get("not_before")),
@@ -419,7 +429,7 @@ def _adapt_shodan(raw: Any, domain: str, in_scope_ips: list[str]) -> dict[str, A
     return result
 
 
-def _add_harvester_host(entry: Any, domain: str, result: dict[str, Any]) -> None:
+def _add_harvester_host(entry: Any, domain: str, result: dict[str, Any], sources: list[str] | None = None) -> None:
     if not isinstance(entry, str):
         _discard(result, "valor_invalido", entry)
         return
@@ -430,7 +440,7 @@ def _add_harvester_host(entry: Any, domain: str, result: dict[str, Any]) -> None
     name = entry if delimiter == -1 else entry[:delimiter]
     address_text = "" if delimiter == -1 else entry[delimiter + 1:]
     address = normalizar_ip(address_text) if address_text else None
-    facts = [{"atributo": "descubierto"}]
+    facts = [{"atributo": "descubierto", "datos": {"proveedores": sources}}] if sources else [{"atributo": "descubierto"}]
     if address:
         facts.append({"atributo": "resuelve_a", "datos": {"ip": address}})
     hostname = _add_name(result, name, domain, facts)
@@ -442,6 +452,30 @@ def _adapt_harvester(raw: Any, domain: str) -> dict[str, Any]:
     result = _new_result()
     if not _object(raw):
         return _format_error(result, "un objeto", raw)
+    if raw.get("items"):
+        for item in raw["items"]:
+            if not isinstance(item, dict):
+                _discard(result, "valor_invalido", item)
+                continue
+            kind = str(item.get("type", "")).lower()
+            value = item.get("value")
+            providers = [source for source in item.get("sources", []) if isinstance(source, str)]
+            facts = [{"atributo": "descubierto", "datos": {"proveedores": providers}}] if providers else [{"atributo": "descubierto"}]
+            if kind in {"hostname", "host"}:
+                _add_harvester_host(value, domain, result, providers)
+            elif kind == "ip":
+                _add_ip(result, value, facts)
+            elif kind == "email":
+                _add_email(result, value, domain, facts)
+            elif kind == "url" and isinstance(value, str):
+                try:
+                    hostname = urlsplit(value).hostname
+                except ValueError:
+                    hostname = None
+                _add_harvester_host(hostname, domain, result, providers)
+            else:
+                _discard(result, "tipo_no_soportado", item)
+        return result
     for entry in [*_list(raw.get("hosts")), *_list(raw.get("vhosts"))]:
         _add_harvester_host(entry, domain, result)
     for address in _list(raw.get("ips")):
@@ -498,9 +532,16 @@ def _adapt_spiderfoot_event(
     if not _object(event):
         _discard(result, "valor_invalido", event)
         return
+    # SpiderFoot exporta la decisión del analista junto al evento.
+    if str(event.get("false_positive", "")).strip().lower() in {"1", "true"}:
+        _discard(result, "falso_positivo_fuente", event.get("data"))
+        return
     event_type = str(event.get("type") or event.get("event_type") or "")
     data = event.get("data", "").strip() if isinstance(event.get("data"), str) else ""
     module = event.get("module") if isinstance(event.get("module"), str) else None
+    if module == "SpiderFoot UI":
+        _discard(result, "evento_interno_spiderfoot", event_type)
+        return
     origin = str(event.get("source") or event.get("source_data") or "")
     base = [{"atributo": "descubierto", "datos": {"modulo": module}}]
 
@@ -508,12 +549,33 @@ def _adapt_spiderfoot_event(
         _add_name(result, data, domain, base)
     elif event_type in ips:
         _add_ip(result, data, base)
+        address = normalizar_ip(data)
+        origin_name = normalizar_dominio(origin)
+        if address and origin_name and clasificar_dominio(origin_name[0], domain):
+            _add_name(result, origin_name[0], domain, [{"atributo": "resuelve_a", "datos": {"ip": address, "modulo": module}}])
     elif event_type in emails:
         _add_email(result, data, domain, base)
     elif event_type in ports:
         _spiderfoot_port(result, event_type, data, module)
     elif cve_types.fullmatch(event_type):
         _spiderfoot_cve(result, event_type, data, origin, module, domain)
+    elif event_type in {"DNS_POSTURE", "COMMONCRAWL_URL", "RDAP_REGISTRATION", "URLSCAN_HISTORY", "URLSCAN_HTTP_STATUS", "URLSCAN_REDIRECT", "URLSCAN_HTTP_REDIRECT", "URLSCAN_TLS_CERTIFICATE", "URLSCAN_PAGE_METADATA", "URLSCAN_SECURITY_HEADERS", "URLSCAN_VERDICT", "WEBSERVER_BANNER", "WEBSERVER_TECHNOLOGY", "SOFTWARE_USED", "OPERATING_SYSTEM", "TCP_PORT_OPEN_BANNER", "UDP_PORT_OPEN_INFO", "PROVIDER_PORT", "VULNERABILITY_GENERAL", "VULNERABILITY_DISCLOSURE"}:
+        fact = {"atributo": "info_host", "datos": {"modulo": module, "tipo_evento": event_type, "valor": data}}
+        service = parsear_servicio(origin)
+        if service:
+            _add_service(result, service["ip"], service["puerto"], service["protocolo"], [fact])
+        elif normalizar_ip(origin):
+            _add_ip(result, origin, [fact])
+        else:
+            if origin.startswith(("https://", "http://")):
+                try:
+                    origin = urlsplit(origin).hostname or ""
+                except ValueError:
+                    origin = ""
+            if normalizar_dominio(origin):
+                _add_name(result, origin, domain, [fact])
+            else:
+                _discard(result, "sin_activo_asociado", origin)
     else:
         _discard(result, "tipo_no_soportado", event_type)
 
@@ -544,9 +606,60 @@ def _adapt_spiderfoot(raw: Any, domain: str) -> dict[str, Any]:
     ips = {"IP_ADDRESS", "IPV6_ADDRESS"}
     emails = {"EMAILADDR", "EMAILADDR_GENERIC", "EMAIL_ADDRESS"}
     ports = {"TCP_PORT_OPEN", "UDP_PORT_OPEN"}
-    cve_types = re.compile(r"^VULNERABILITY_CVE_(CRITICAL|HIGH|MEDIUM|LOW)$")
+    cve_types = re.compile(r"^VULNERABILITY_CVE_(CRITICAL|HIGH|MEDIUM|LOW|UNKNOWN)$")
+    passive_events = [event for event in raw
+                      if isinstance(event, dict) and event.get("module") in PASSIVE_MODULES]
+    summaries = passive_reports(passive_events)
+    if passive_events and not summaries:
+        for event in passive_events:
+            _discard(result, "reporte_pasivo_invalido_o_descartado", event.get("module"))
+    for summary in summaries:
+        if summary["status"] not in {"ok", "partial"}:
+            continue
+        for fact in summary["events"]:
+            if not isinstance(fact, dict):
+                continue
+            # Events must refer to the exact queried host, or a service on that IP.
+            origin = fact.get("source_data", "")
+            service = parsear_servicio(origin) if isinstance(origin, str) else None
+            if origin != summary["target"] and (service or {}).get("ip") != summary["target"]:
+                _discard(result, "fuera_de_alcance", origin)
+                continue
+            before = len(result["observaciones"])
+            _adapt_spiderfoot_event({**fact, "module": summary["module"]}, domain, result, names, ips, emails, ports, cve_types)
+            for observation in result["observaciones"][before:]:
+                observation["datos"].update(fact.get("metadata") or {})
+                observation["datos"]["modulo"] = summary["module"]
+                observed = fecha_iso(fact.get("observed_at"))
+                if observed:
+                    observation["observado_en"] = observed
     for event in raw:
-        _adapt_spiderfoot_event(event, domain, result, names, ips, emails, ports, cve_types)
+        if not (isinstance(event, dict) and event.get("module") in PASSIVE_MODULES):
+            origin = event.get("source_data", "") if isinstance(event, dict) else ""
+            if (isinstance(event, dict) and event.get("module") in PASSIVE_DNS_MODULES
+                    and isinstance(origin, str)
+                    and re.search(r'"profile"\s*:\s*"baxter-passive-v1"', origin)):
+                _discard(result, "evento_derivado_reporte_pasivo", event.get("event_type", event.get("type")))
+                continue
+            _adapt_spiderfoot_event(event, domain, result, names, ips, emails, ports, cve_types)
+    return result
+
+
+def _adapt_web(raw: Any, domain: str) -> dict[str, Any]:
+    result = _new_result()
+    if not isinstance(raw, list):
+        return _format_error(result, "un arreglo de comprobaciones", raw)
+    checks = {"tls_verificado", "tls_por_expirar", "tls_invalido", "http_sin_redireccion"}
+    for event in raw:
+        if not isinstance(event, dict) or event.get("check") not in checks:
+            _discard(result, "valor_invalido", event)
+            continue
+        host = event.get("host")
+        if not isinstance(host, str):
+            _discard(result, "valor_invalido", event)
+            continue
+        data = {key: value for key, value in event.items() if key != "host"}
+        _add_name(result, host, domain, [{"atributo": "info_host", "datos": data}])
     return result
 
 
@@ -555,6 +668,7 @@ ADAPTERS = {
     "Shodan": _adapt_shodan,
     "theHarvester": _adapt_harvester,
     "SpiderFoot": _adapt_spiderfoot,
+    "Web": _adapt_web,
 }
 
 

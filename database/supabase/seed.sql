@@ -14,7 +14,8 @@ INSERT INTO public.fuentes_osint (nombre, tipo_acceso) VALUES
     ('Shodan',       'api_key'),
     ('SpiderFoot',   'herramienta_local'),
     ('theHarvester', 'herramienta_local'),
-    ('crt.sh',       'publica')
+    ('crt.sh',       'publica'),
+    ('Web',          'comprobacion_web')
 ON CONFLICT (nombre) DO UPDATE
     SET tipo_acceso = EXCLUDED.tipo_acceso;
 -- ---------------------------------------------------------------------
@@ -43,10 +44,10 @@ VALUES
     -- Configuración
     ('CONF-001', 'Certificado histórico de CT expirado',
      'Requiere verificar el certificado que sirve actualmente el dominio.',
-     'dominio', 'configuracion', 'baja', 0, true),
+     'dominio', 'configuracion', 'baja', 0, false),
     ('CONF-002', 'Certificado histórico de CT próximo a expirar',
      'Requiere verificar el certificado que sirve actualmente el dominio.',
-     'dominio', 'configuracion', 'baja', 0, true),
+     'dominio', 'configuracion', 'baja', 0, false),
     ('CONF-003', 'Registros SPF/DKIM/DMARC ausentes o débiles',
      'El dominio puede ser suplantado en correos electrónicos.',
      'dominio', 'configuracion', 'media', 10, false),

@@ -1,11 +1,12 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import type { ClientData, Source, SourceResult } from '../../services/clientData'
+import { isActiveSource } from '../../services/sourcePolicy'
 import LiveSourceLogDialog from './components/LiveSourceLogDialog'
 import './sources.css'
 
 type Filter = 'all' | 'healthy' | 'issues'
-type SourceItem = { source: Source; result: SourceResult | null; status: 'healthy' | 'error' | 'pending' | 'running' }
+type SourceItem = { source: Source; result: SourceResult | null; status: 'healthy' | 'partial' | 'error' | 'pending' | 'running' }
 
 function dateTime(value: string | null | undefined) {
   return value ? new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—'
@@ -19,13 +20,13 @@ function duration(result: SourceResult | null) {
 
 function state(result: SourceResult | null): SourceItem['status'] {
   if (!result) return 'pending'
-  if (result.estado === 'completado') return 'healthy'
+  if (result.estado === 'completado') return result.error ? 'partial' : 'healthy'
   if (result.estado === 'fallido') return 'error'
   return result.estado === 'ejecutando' ? 'running' : 'pending'
 }
 
 function stateLabel(status: SourceItem['status']) {
-  return { healthy: 'Saludable', error: 'Fallida', running: 'Ejecutando', pending: 'Sin ejecutar' }[status]
+  return { healthy: 'Saludable', partial: 'Parcial', error: 'Fallida', running: 'Ejecutando', pending: 'Sin ejecutar' }[status]
 }
 
 export default function LiveSourcesScreen({ data }: { data: ClientData }) {
@@ -35,29 +36,30 @@ export default function LiveSourcesScreen({ data }: { data: ClientData }) {
   const [detailOpen, setDetailOpen] = useState(false)
   const closeDetail = useCallback(() => setDetailOpen(false), [])
   const results = useMemo(() => new Map(data.sourceResults.map((result) => [result.fuente_id, result])), [data.sourceResults])
-  const items = useMemo<SourceItem[]>(() => data.sources.map((source) => {
+  const items = useMemo<SourceItem[]>(() => data.sources.filter((source) => isActiveSource(source.nombre)).map((source) => {
     const result = results.get(source.id) ?? null
     return { source, result, status: state(result) }
   }), [data.sources, results])
-  const selected = items.find((item) => item.source.id === selectedId) ?? items.find((item) => item.status === 'error') ?? items[0] ?? null
+  const selected = items.find((item) => item.source.id === selectedId) ?? items.find((item) => item.status === 'error' || item.status === 'partial') ?? items[0] ?? null
   const healthy = items.filter((item) => item.status === 'healthy').length
-  const issues = items.filter((item) => item.status === 'error').length
-  const coverage = items.length && data.sourceResults.length ? Math.round(healthy / items.length * 100) : null
-  const observations = data.sourceResults.reduce((sum, result) => sum + result.observaciones_generadas, 0)
-  const normalized = data.sourceResults.reduce((sum, result) => sum + result.observaciones_nuevas, 0)
-  const duplicated = data.sourceResults.reduce((sum, result) => sum + result.observaciones_duplicadas, 0)
-  const newAssets = data.sourceResults.reduce((sum, result) => sum + result.activos_nuevos, 0)
-  const existingAssets = data.sourceResults.reduce((sum, result) => sum + result.activos_existentes, 0)
+  const issues = items.filter((item) => item.status === 'error' || item.status === 'partial').length
+  const activeResults = items.flatMap((item) => item.result ? [item.result] : [])
+  const coverage = items.length && activeResults.length ? Math.round(healthy / items.length * 100) : null
+  const observations = activeResults.reduce((sum, result) => sum + result.observaciones_generadas, 0)
+  const normalized = activeResults.reduce((sum, result) => sum + result.observaciones_nuevas, 0)
+  const duplicated = activeResults.reduce((sum, result) => sum + result.observaciones_duplicadas, 0)
+  const newAssets = activeResults.reduce((sum, result) => sum + result.activos_nuevos, 0)
+  const existingAssets = activeResults.reduce((sum, result) => sum + result.activos_existentes, 0)
   const visible = items.filter((item) => {
     const searchMatches = `${item.source.nombre} ${item.source.tipo_acceso}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
-    return searchMatches && (filter === 'all' || (filter === 'healthy' ? item.status === 'healthy' : item.status === 'error'))
+    return searchMatches && (filter === 'all' || (filter === 'healthy' ? item.status === 'healthy' : item.status === 'error' || item.status === 'partial'))
   })
   return <div className="sources-screen live-sources-screen">
     <div className="source-kpis" aria-label="Resumen de fuentes">
       {[
         { label: 'CONECTADAS', value: items.length, detail: 'Fuentes registradas', tone: '' },
         { label: 'SALUDABLES', value: healthy, detail: 'Finalizaron sin incidencias', tone: 'healthy' },
-        { label: 'CON INCIDENCIAS', value: issues, detail: 'Fallaron en el último análisis', tone: 'partial' },
+        { label: 'CON INCIDENCIAS', value: issues, detail: 'Fallaron o terminaron parcialmente', tone: 'partial' },
         { label: 'COBERTURA', value: coverage === null ? '—' : `${coverage}%`, detail: 'Fuentes completadas', tone: 'coverage' },
       ].map((metric) => <article className={`content-card source-kpi ${metric.tone ? `tone-${metric.tone}` : ''}`} key={metric.label}><span>{metric.label}</span><strong>{metric.value}</strong><small>{metric.detail}</small></article>)}
     </div>

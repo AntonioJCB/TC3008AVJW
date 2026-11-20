@@ -1,6 +1,6 @@
 // Datos estáticos de la propuesta visual. No provienen de un escaneo.
 export type AssetKind = 'Dominio' | 'Subdominio' | 'IP pública' | 'Correo' | 'Servicio'
-export type AssetExposure = 'Crítica' | 'Alta' | 'Media' | 'Baja' | 'Sin evaluar'
+export type AssetExposure = 'Crítica' | 'Alta' | 'Media' | 'Baja' | 'Evaluado sin hallazgos' | 'Sin evaluar' | 'Fuera de alcance' | 'Sin evaluación compatible' | 'Histórico/sintético'
 export type AssetFilter = AssetKind | 'Todos'
 
 export interface AssetRecord {
@@ -11,6 +11,9 @@ export interface AssetRecord {
   exposure: AssetExposure
   findings: number
   sources: string[]
+  historicalSources?: string[]
+  informationalFindings?: number
+  coverageState?: string
   observed: string
   observationState: string
   isNew: boolean

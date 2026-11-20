@@ -24,9 +24,13 @@ export function useFindingExplorer(records: FindingRecord[] = mockFindings) {
     high: searchedFindings.filter((finding) => finding.severity === 'high').length,
     medium: searchedFindings.filter((finding) => finding.severity === 'medium').length,
     low: searchedFindings.filter((finding) => finding.severity === 'low').length,
+    confirmada: searchedFindings.filter((finding) => finding.evidenceLevel === 'confirmada').length,
+    potencial: searchedFindings.filter((finding) => finding.evidenceLevel === 'potencial').length,
+    sin_clasificar: searchedFindings.filter((finding) => (finding.evidenceLevel ?? 'sin_clasificar') === 'sin_clasificar').length,
   }), [searchedFindings])
 
-  const matchingFindings = useMemo(() => searchedFindings.filter((finding) => filter === 'all' || finding.severity === filter), [filter, searchedFindings])
+  const matchingFindings = useMemo(() => searchedFindings.filter((finding) => filter === 'all'
+    || finding.severity === filter || (finding.evidenceLevel ?? 'sin_clasificar') === filter), [filter, searchedFindings])
   const pageCount = Math.max(1, Math.ceil(matchingFindings.length / findingPageSize))
   const visibleFindings = matchingFindings.slice(page * findingPageSize, (page + 1) * findingPageSize)
   const selectedFinding = visibleFindings.find((finding) => finding.id === selectedId) ?? visibleFindings[0] ?? null

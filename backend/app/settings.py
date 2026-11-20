@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
-DEFAULT_SPIDERFOOT_MODULES = "sfp_dnsresolve,sfp_dnsraw,sfp_robtex,sfp_crobat_api"
+from app.spiderfoot_passive import DEFAULT_MODULES as DEFAULT_SPIDERFOOT_MODULES
 
 
 @dataclass(frozen=True)
@@ -32,6 +32,8 @@ class Settings:
     frontend_url: str = "http://localhost:5173"
     crtsh_timeout_seconds: float = 60
     spiderfoot_modules: str = DEFAULT_SPIDERFOOT_MODULES
+    scan_max_targets: int = 20
+    nvd_api_key: str | None = None
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -57,14 +59,18 @@ class Settings:
         shodan_api_key = os.getenv("SHODAN_API_KEY", "").strip()
         if shodan_api_key.lower().startswith("replace-"):
             shodan_api_key = ""
+        nvd_api_key = os.getenv("NVD_API_KEY", "").strip()
+        if nvd_api_key.lower().startswith("replace-"):
+            nvd_api_key = ""
 
         return cls(
             supabase_url=supabase_url,
             supabase_service_role_key=service_key,
             shodan_api_key=shodan_api_key or None,
+            nvd_api_key=nvd_api_key or None,
             theharvester_bin=os.getenv("THEHARVESTER_BIN", "theHarvester").strip(),
             theharvester_sources=os.getenv(
-                "THEHARVESTER_SOURCES", "certspotter,hackertarget"
+                "THEHARVESTER_SOURCES", "certspotter,rapiddns,urlscan"
             ).strip(),
             spiderfoot_url=os.getenv(
                 "SPIDERFOOT_URL", "http://127.0.0.1:5001"
@@ -85,6 +91,7 @@ class Settings:
             shodan_pause_seconds=float(os.getenv("SHODAN_PAUSE_SECONDS", "1.1")),
             frontend_url=os.getenv("FRONTEND_URL", "http://localhost:5173").strip().rstrip("/"),
             crtsh_timeout_seconds=float(os.getenv("CRTSH_TIMEOUT_SECONDS", "60")),
+            scan_max_targets=max(1, min(100, int(os.getenv("SCAN_MAX_TARGETS", "20")))),
         )
 
 

@@ -1,18 +1,41 @@
 from __future__ import annotations
 
-from typing import Any
+import logging
+import time
+from typing import Any, Callable
 
+from httpx import HTTPError, TransportError
 from supabase import Client
 
-from app.osint_normalization import adaptar, hash_contenido
+from app.nvd_enrichment import enrich_observations
+from app.osv_enrichment import enrich_observations_osv
+from app.exploit_enrichment import enrich_exploitation
+from app.osint_normalization import adaptar, deduplicar_local, hash_contenido
+from app.vulnerability_enrichment import merge_potential_vulnerabilities
 
 
 BATCH_SIZE = 1000
+logger = logging.getLogger(__name__)
 
 
 def _execute(query: Any) -> Any:
     response = query.execute()
     return response.data
+
+
+def _retry_transport(build_query: Callable[[], Any], *, attempts: int = 4) -> Any:
+    """Repite escrituras idempotentes si se corta la respuesta de Supabase."""
+    for attempt in range(attempts):
+        try:
+            return _execute(build_query())
+        except TransportError:
+            if attempt + 1 == attempts:
+                raise
+            delay = 0.5 * 2 ** attempt
+            logger.warning("Supabase cortó la respuesta de ingesta; reintento %s/%s en %.1f s",
+                           attempt + 2, attempts, delay)
+            time.sleep(delay)
+    raise RuntimeError("Se agotaron los reintentos de ingesta")
 
 
 def _count_discarded(discarded: list[dict[str, Any]]) -> dict[str, int]:
@@ -43,9 +66,8 @@ def _save_raw_result(
     raw: Any,
     content_hash: str,
 ) -> tuple[str, str]:
-    inserted = _execute(
-        client.table("resultados_crudos")
-        .upsert(
+    inserted = _retry_transport(lambda:
+        client.table("resultados_crudos").upsert(
             {
                 "escaneo_id": scan_id,
                 "fuente_id": source_id,
@@ -60,7 +82,7 @@ def _save_raw_result(
     if inserted:
         return str(inserted[0]["id"]), str(inserted[0].get("estado") or "pendiente")
 
-    existing = _execute(
+    existing = _retry_transport(lambda:
         client.table("resultados_crudos")
         .select("id, estado")
         .eq("escaneo_id", scan_id)
@@ -116,6 +138,8 @@ def ingestar_resultado(
     raw: Any,
     domain: str,
     ips_in_scope: list[str] | None = None,
+    nvd_api_key: str | None = None,
+    exploit_enrichment: bool = False,
 ) -> dict[str, Any]:
     content_hash = hash_contenido(raw)
     raw_id, raw_status = _save_raw_result(client, scan_id, source_id, raw, content_hash)
@@ -125,6 +149,23 @@ def ingestar_resultado(
     try:
         adapted = adaptar(source, raw, domain, ips_in_scope)
         observations = adapted["observaciones"]
+        enriched: list[dict[str, Any]] = []
+        if nvd_api_key and source in {"Shodan", "SpiderFoot"}:
+            try:
+                enriched.extend(enrich_observations(observations, nvd_api_key, source))
+            except (HTTPError, OSError, TypeError, ValueError):
+                # NVD enriquece; una incidencia suya no invalida la evidencia OSINT original.
+                logger.warning("No se pudo enriquecer %s con NVD", source, exc_info=True)
+        if source in {"Shodan", "SpiderFoot"}:
+            try:
+                enriched.extend(enrich_observations_osv(observations, source))
+            except (HTTPError, OSError, TypeError, ValueError):
+                # OSV solo enriquece paquetes explícitos; nunca invalida la evidencia original.
+                logger.warning("No se pudo enriquecer %s con OSV", source, exc_info=True)
+        if enriched:
+            observations = deduplicar_local(merge_potential_vulnerabilities([*observations, *enriched]))
+        if exploit_enrichment:
+            observations = enrich_exploitation(observations)
         chunks = [
             observations[offset:offset + BATCH_SIZE]
             for offset in range(0, len(observations), BATCH_SIZE)
@@ -136,15 +177,19 @@ def ingestar_resultado(
             "observaciones_duplicadas": 0,
         }
         for index, chunk in enumerate(chunks):
-            counts = _call_ingestion_rpc(
-                client,
-                organization_id,
-                scan_id,
-                source_id,
-                raw_id,
-                chunk,
-                mark_processed=index == len(chunks) - 1,
-            )
+            try:
+                counts = _call_ingestion_rpc(
+                    client, organization_id, scan_id, source_id, raw_id, chunk,
+                    mark_processed=index == len(chunks) - 1,
+                )
+            except Exception:
+                # La transacción puede haberse confirmado aunque se pierda la
+                # respuesta HTTP. La RPC usa ON CONFLICT y repetirla es seguro.
+                logger.warning("Se perdió la respuesta de ingesta; reintentando lote de %s", source, exc_info=True)
+                counts = _call_ingestion_rpc(
+                    client, organization_id, scan_id, source_id, raw_id, chunk,
+                    mark_processed=index == len(chunks) - 1,
+                )
             for key, count in counts.items():
                 totals[key] += count
 

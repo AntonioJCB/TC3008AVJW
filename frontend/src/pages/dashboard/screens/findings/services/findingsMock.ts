@@ -1,7 +1,8 @@
 // Datos locales de la maqueta: cada contador se calcula desde esta lista.
 export type FindingSeverity = 'critical' | 'high' | 'medium' | 'low'
-export type FindingStatus = 'Nuevo' | 'Abierto' | 'Revisado' | 'Aceptado'
-export type FindingFilter = FindingSeverity | 'all'
+export type FindingStatus = 'Nuevo' | 'Abierto' | 'Revisado' | 'Aceptado' | 'Resuelto'
+export type EvidenceLevel = 'confirmada' | 'potencial' | 'sin_clasificar'
+export type FindingFilter = FindingSeverity | EvidenceLevel | 'all'
 
 export interface FindingRecord {
   id: string
@@ -16,10 +17,21 @@ export interface FindingRecord {
   impact: number | null
   traceFinding: string
   traceEvidence: string
+  pendingRevalidation?: boolean
+  evidenceLevel?: EvidenceLevel
+  ruleActive?: boolean | null
+  potentialImpact?: number | null
+  nonConfirmationReason?: string | null
+  ageDays?: number | null
+  contributesTo?: 'confirmado' | 'potencial' | 'ninguno'
 }
 
 export const severityLabels: Record<FindingSeverity, string> = {
   critical: 'Crítico', high: 'Alto', medium: 'Medio', low: 'Bajo',
+}
+
+export const evidenceLabels: Record<EvidenceLevel, string> = {
+  confirmada: 'Confirmada', potencial: 'Potencial', sin_clasificar: 'Sin clasificar',
 }
 
 export const findingFilters: { value: FindingFilter; label: string }[] = [
@@ -28,6 +40,9 @@ export const findingFilters: { value: FindingFilter; label: string }[] = [
   { value: 'high', label: 'Altos' },
   { value: 'medium', label: 'Medios' },
   { value: 'low', label: 'Bajos' },
+  { value: 'confirmada', label: 'Confirmados' },
+  { value: 'potencial', label: 'Potenciales' },
+  { value: 'sin_clasificar', label: 'Sin clasificar' },
 ]
 
 export const mockFindings: FindingRecord[] = [

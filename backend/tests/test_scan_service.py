@@ -2,15 +2,16 @@ import asyncio
 import logging
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
+from httpx import ReadError
 
 from app import scan_service
-from app.scan_service import SOURCE_NAMES, _execute, compute_scan_state, run_scan_job, scan_message
+from app.scan_service import SOURCE_NAMES, _execute, calculate_risk_with_retry, compute_scan_state, run_scan_job, scan_message
 
 OK = {"estado": "completado"}
-KO = {"estado": "fallido", "error": "HTTP 403 from api.shodan.io"}
+KO = {"estado": "fallido", "error": "Proveedor no disponible"}
 
 
 def resultados(**estados):
@@ -22,7 +23,12 @@ class EstadoDelEscaneoTests(unittest.TestCase):
         self.assertEqual(compute_scan_state({n: OK for n in SOURCE_NAMES}), "completado")
 
     def test_una_falla_es_incompleto(self):
-        self.assertEqual(compute_scan_state({**{n: OK for n in SOURCE_NAMES}, "Shodan": KO}), "incompleto")
+        self.assertEqual(compute_scan_state({**{n: OK for n in SOURCE_NAMES}, "theHarvester": KO}), "incompleto")
+
+    def test_shodan_desactivado_no_altera_el_estado(self):
+        self.assertNotIn("Shodan", SOURCE_NAMES)
+        self.assertNotIn("Web", SOURCE_NAMES)
+        self.assertEqual(compute_scan_state({**{n: OK for n in SOURCE_NAMES}, "Shodan": KO}), "completado")
 
     def test_tres_fallan_sigue_siendo_incompleto(self):
         r = {n: KO for n in SOURCE_NAMES}
@@ -36,22 +42,35 @@ class EstadoDelEscaneoTests(unittest.TestCase):
         self.assertEqual(compute_scan_state({"crt.sh": OK}), "incompleto")
         self.assertEqual(compute_scan_state({}), "fallido")
 
+    def test_theharvester_fallido_con_jsonl_conserva_respuesta_cruda(self):
+        client = MagicMock()
+        outcome = {"estado": "fallido", "contenido": {"items": [], "runs": [{"target": "ejemplo.com"}]}, "error": "cuota agotada"}
+        summary = {"resultado_crudo_id": "raw-id", "ya_procesado": False, "observaciones_generadas": 0,
+                   "activos_nuevos": 0, "activos_existentes": 0, "observaciones_nuevas": 0,
+                   "observaciones_duplicadas": 0, "descartadas": {}}
+        with (patch.object(scan_service, "ingestar_resultado", return_value=summary) as ingest,
+              patch.object(scan_service, "_execute", return_value=[])):
+            stored = scan_service._persist_source(client, "org", "scan", "source", "theHarvester", "ejemplo.com", outcome)
+        ingest.assert_called_once()
+        self.assertEqual(stored["resultado_crudo_id"], "raw-id")
+        self.assertEqual(stored["estado"], "fallido")
+
 
 class MensajesTests(unittest.TestCase):
     def test_incompleto_dice_cual_fallo_y_cuales_no(self):
-        r = {**{n: OK for n in SOURCE_NAMES}, "Shodan": KO}
+        r = {**{n: OK for n in SOURCE_NAMES}, "theHarvester": KO}
         mensaje = scan_message("incompleto", r)
-        self.assertIn("Fallaron: Shodan (HTTP 403 from api.shodan.io)", mensaje)
-        self.assertIn("Terminaron correctamente: crt.sh, theHarvester, SpiderFoot", mensaje)
+        self.assertIn("Fallaron: theHarvester (Proveedor no disponible)", mensaje)
+        self.assertIn("Terminaron correctamente: crt.sh, SpiderFoot", mensaje)
 
     def test_completado_en_curso_y_pendiente(self):
-        self.assertIn("4 fuentes terminaron correctamente", scan_message("completado", {n: OK for n in SOURCE_NAMES}))
-        self.assertIn("2 de 4", scan_message("ejecutando", {"crt.sh": OK, "Shodan": KO, "SpiderFoot": {"estado": "ejecutando"}}))
+        self.assertIn(f"{len(SOURCE_NAMES)} fuentes terminaron correctamente", scan_message("completado", {n: OK for n in SOURCE_NAMES}))
+        self.assertIn(f"2 de {len(SOURCE_NAMES)}", scan_message("ejecutando", {"crt.sh": OK, "theHarvester": KO, "SpiderFoot": {"estado": "ejecutando"}}))
         self.assertIn("pendiente", scan_message("pendiente", {}))
 
     def test_un_error_largo_se_recorta(self):
         r = {n: KO for n in SOURCE_NAMES}
-        r["Shodan"] = {"estado": "fallido", "error": "x" * 900}
+        r["theHarvester"] = {"estado": "fallido", "error": "x" * 900}
         self.assertLess(len(scan_message("fallido", r)), 900)
 
 
@@ -87,6 +106,66 @@ class RunScanJobTests(unittest.IsolatedAsyncioTestCase):
     SCAN = {"id": "scan-1", "organizacion_id": "org-1"}
     IDS = {n: f"id-{n}" for n in SOURCE_NAMES}
 
+    def test_crtsh_fallido_guarda_reporte_sin_generar_observaciones(self):
+        summary = {
+            "resultado_crudo_id": "raw-crt", "ya_procesado": False,
+            "observaciones_generadas": 0, "activos_nuevos": 0, "activos_existentes": 0,
+            "observaciones_nuevas": 0, "observaciones_duplicadas": 0, "descartadas": {},
+        }
+        outcome = {"estado": "fallido", "error": "HTTP 502", "contenido": {
+            "version": 1, "entries": [], "queries": [{"query": "%.example.com", "status": "error"}],
+            "covered_targets": ["example.com"],
+        }}
+        with (patch.object(scan_service, "ingestar_resultado", return_value=summary) as ingest,
+              patch.object(scan_service, "_execute")):
+            saved = scan_service._persist_source(
+                MagicMock(), "org", "scan", "source", "crt.sh", "example.com", outcome,
+            )
+        ingest.assert_called_once()
+        self.assertEqual(saved["estado"], "fallido")
+        self.assertEqual(saved["resultado_crudo_id"], "raw-crt")
+        self.assertEqual(saved["observaciones_generadas"], 0)
+
+    def test_ampliacion_conserva_contadores_sin_duplicar_observaciones(self):
+        previous = {
+            "estado": "completado", "resultado_crudo_id": "raw-first", "ya_procesado": False,
+            "observaciones_generadas": 2, "activos_nuevos": 1, "activos_existentes": 1,
+            "observaciones_nuevas": 2, "observaciones_duplicadas": 0, "descartadas": {},
+        }
+        cumulative = {
+            "resultado_crudo_id": "raw-final", "ya_procesado": False,
+            "observaciones_generadas": 4, "activos_nuevos": 1, "activos_existentes": 3,
+            "observaciones_nuevas": 1, "observaciones_duplicadas": 3, "descartadas": {},
+        }
+        with (
+            patch.object(scan_service, "ingestar_resultado", return_value=cumulative),
+            patch.object(scan_service, "_execute"),
+        ):
+            saved = scan_service._persist_source(
+                MagicMock(), "org", "scan", "source", "SpiderFoot", "example.com",
+                {"estado": "completado", "contenido": [], "error": None}, previous,
+            )
+        self.assertEqual(saved["observaciones_generadas"], 4)
+        self.assertEqual(saved["observaciones_nuevas"], 3)
+        self.assertEqual(saved["observaciones_duplicadas"], 1)
+        self.assertEqual(saved["activos_nuevos"], 2)
+        self.assertEqual(saved["activos_existentes"], 2)
+
+    async def test_riesgo_se_reintenta_si_supabase_corta_la_conexion(self):
+        with (
+            patch.object(scan_service, "calcular_y_guardar", side_effect=[ReadError("red"), None]) as risk,
+            patch.object(scan_service.asyncio, "sleep") as sleep,
+        ):
+            await calculate_risk_with_retry(object(), "scan-1")
+        self.assertEqual(risk.call_count, 2)
+        sleep.assert_awaited_once_with(1.0)
+
+    async def test_error_del_motor_no_se_reintenta_como_error_de_red(self):
+        with patch.object(scan_service, "calcular_y_guardar", side_effect=ValueError("regla inválida")) as risk:
+            with self.assertRaises(ValueError):
+                await calculate_risk_with_retry(object(), "scan-1")
+        risk.assert_called_once()
+
     async def correr(self, estados, riesgo_falla=False, persistencia_falla=()):
         async def runner_ok(domain):
             return []
@@ -96,7 +175,7 @@ class RunScanJobTests(unittest.IsolatedAsyncioTestCase):
 
         runners = {n: (runner_ok if estados[n] == "ok" else runner_ko) for n in SOURCE_NAMES}
 
-        def persist(client, org, scan, source_id, name, domain, outcome):
+        def persist(client, org, scan, source_id, name, domain, outcome, previous=None, nvd_api_key=None):
             if name in persistencia_falla:
                 raise RuntimeError("base de datos caída")
             return {"estado": outcome["estado"], "error": outcome["error"]}
@@ -120,14 +199,14 @@ class RunScanJobTests(unittest.IsolatedAsyncioTestCase):
         riesgo.assert_called_once()
 
     async def test_una_falla_las_otras_se_guardan_y_queda_incompleto(self):
-        estado, persist, finish, riesgo = await self.correr({**{n: "ok" for n in SOURCE_NAMES}, "Shodan": "ko"})
+        estado, persist, finish, riesgo = await self.correr({**{n: "ok" for n in SOURCE_NAMES}, "theHarvester": "ko"})
         self.assertEqual(estado, "incompleto")
-        self.assertEqual(persist.call_count, 4)  # también se registra la que falló
+        self.assertEqual(persist.call_count, len(SOURCE_NAMES))  # también se registra la que falló
         self.assertEqual(finish.call_args.args[2], "incompleto")
         detalle = self.auditoria.call_args.kwargs["detail"]
         self.assertEqual(self.auditoria.call_args.kwargs["action"], "escaneo_finalizado")
-        self.assertEqual(list(detalle["fuentes_fallidas"]), ["Shodan"])
-        self.assertEqual(detalle["fuentes_ok"], ["crt.sh", "theHarvester", "SpiderFoot"])
+        self.assertEqual(list(detalle["fuentes_fallidas"]), ["theHarvester"])
+        self.assertEqual(detalle["fuentes_ok"], ["crt.sh", "SpiderFoot"])
 
     async def test_todas_fallan_es_fallido_pero_igual_se_calcula_el_riesgo_parcial(self):
         estado, _, finish, riesgo = await self.correr({n: "ko" for n in SOURCE_NAMES})
@@ -162,7 +241,7 @@ class RunScanJobTests(unittest.IsolatedAsyncioTestCase):
                 stopped.set()
                 raise
 
-        def persist(_client, _org, _scan, _source_id, name, _domain, outcome):
+        def persist(_client, _org, _scan, _source_id, name, _domain, outcome, previous=None, nvd_api_key=None):
             if name == "crt.sh":
                 loop.call_soon_threadsafe(saved.set)
             return {"estado": outcome["estado"], "error": outcome["error"]}

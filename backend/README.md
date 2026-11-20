@@ -14,7 +14,7 @@ activos, hallazgos, riesgo y bitácora.
 4. `POST /api/escaneos/{id}/ejecutar` reclama el escaneo y prepara sus fuentes
    en una transacción mediante `iniciar_escaneo`. Mientras esa migración no esté
    aplicada, usa temporalmente el inicio anterior. La respuesta es `202`.
-5. Los adaptadores consultan crt.sh, Shodan, theHarvester y SpiderFoot. Cada
+5. Los adaptadores activos consultan crt.sh, theHarvester y SpiderFoot. Cada
    resultado se guarda, normaliza y deduplica por separado. Un fallo de una
    fuente no cancela las demás; el escaneo termina `completado`, `incompleto`
    o `fallido`.
@@ -39,8 +39,10 @@ python -m uvicorn app.main:app --reload
 ```
 
 Configura `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` en `backend/.env`.
-La llave de servicio es solo para el servidor. `SHODAN_API_KEY` es opcional;
-si falta, esa fuente se reporta fallida y el escaneo puede quedar incompleto.
+La llave de servicio es solo para el servidor. SpiderFoot usa Google Public DNS
+DoH y urlscan de forma predeterminada; InternetDB y Shodan requieren la configuración explícita que se
+describe en [`docs/backend/spiderfoot-pasivo-20261118.md`](../docs/backend/spiderfoot-pasivo-20261118.md). Web no se ejecuta en
+el flujo OSINT pasivo y sus registros históricos permanecen disponibles.
 Los demás binarios y tiempos se configuran con las variables documentadas en
 `.env.example`. Define `CORS_ORIGINS` con los orígenes reales al desplegar y
 `FRONTEND_URL` con la dirección pública del frontend para que las invitaciones

@@ -1,0 +1,30 @@
+{
+  "network": "mocked",
+  "database": "not accessed",
+  "runtime": [
+    {
+      "module": "sfp_baxter_urlscan",
+      "status": "passed",
+      "events": 2,
+      "real_spiderfoot_event": true
+    },
+    {
+      "module": "sfp_baxter_internetdb",
+      "status": "passed",
+      "events": 3,
+      "real_spiderfoot_event": true
+    },
+    {
+      "module": "sfp_baxter_shodan",
+      "status": "passed",
+      "events": 3,
+      "real_spiderfoot_event": true
+    }
+  ],
+  "sha256": {
+    "baxter_passive": "ce8748754215c3ff6d9c6a2c45e2df15937f1a4040bca06ad202b3fa41948310",
+    "sfp_baxter_internetdb": "23d8b55d3ebc32eef0cf4a9bbd7ad35bf0b88c9725c3f4bb3164c84656956a07",
+    "sfp_baxter_shodan": "693788eb9240cece406ce28fb0fecf57aeaf81b564e180eb512737b8fdbb437c",
+    "sfp_baxter_urlscan": "e60fb81a71d354de4d076ec845309e030399c66972caff9a3339546deda0cb9f"
+  }
+}

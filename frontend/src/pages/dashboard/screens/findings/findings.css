@@ -47,10 +47,15 @@
 .finding-record-cell small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .finding-record-cell strong { color: var(--ink); font-size: 13px; font-weight: 750; }
 .finding-record-cell small { margin-top: 6px; color: var(--meta); font-size: 12px; }
+.finding-evidence-level { display: inline-flex; width: fit-content; padding: 3px 7px; border: 1px solid var(--line); border-radius: 99px; color: var(--meta); font-size: 10px; font-style: normal; font-weight: 800; line-height: 1.2; white-space: nowrap; }
+.finding-record-cell small .finding-evidence-level { display: inline-flex; margin-left: 5px; }
+.finding-evidence-level.confirmada { border-color: color-mix(in srgb, var(--risk-low) 55%, var(--line)); color: var(--risk-low); }
+.finding-evidence-level.potencial { border-color: color-mix(in srgb, var(--bronze) 55%, var(--line)); color: var(--bronze); }
 .finding-rule strong { font-size: 12px; }
 .finding-confidence strong { font-size: 14px; }
 .finding-status { display: inline-flex; padding: 5px 9px; border: 1px solid var(--line); border-radius: 99px; color: var(--muted); font-size: 11px; font-style: normal; font-weight: 750; white-space: nowrap; }
 .finding-status.new { border-color: color-mix(in srgb, var(--coral) 65%, var(--line)); background: color-mix(in srgb, var(--coral) 10%, transparent); color: color-mix(in srgb, var(--coral) 48%, var(--ink)); }
+.finding-status.resolved { border-color: color-mix(in srgb, var(--risk-low) 60%, var(--line)); color: var(--risk-low); }
 .finding-empty { margin: 0; padding: 48px 18px; color: var(--muted); font-size: 13px; text-align: center; }
 .finding-pagination { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 20px; border-top: 1px solid var(--line-soft); color: var(--meta); font-size: 12px; }
 .finding-pagination > div { display: flex; gap: 7px; }
@@ -65,10 +70,12 @@
 .finding-insights-severity.high { color: var(--risk-high); }
 .finding-insights-severity.medium { color: var(--risk-medium); }
 .finding-insights-severity .finding-severity-dot { width: 8px; height: 8px; }
+.finding-insights > .finding-evidence-level { margin-top: 10px; }
 .proposal-dashboard .finding-insights h2 { overflow-wrap: anywhere; margin: 18px 0 9px; color: var(--ink); font-size: 20px; line-height: 1.22; letter-spacing: -.03em; }
 .finding-insights-description { min-height: 52px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.48; }
 .finding-impact { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 22px; padding: 18px 0; border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); color: var(--muted); font-size: 12px; }
 .finding-impact strong { color: var(--risk-critical); font-size: 23px; line-height: 1; }
+.finding-non-confirmation { margin: 12px 0 0; padding: 10px; border: 1px solid color-mix(in srgb, var(--bronze) 45%, var(--line)); border-radius: 8px; background: var(--theme-field); color: var(--muted); font-size: 11px; line-height: 1.4; }
 .finding-trace { margin: 20px 0 0; overflow: hidden; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--theme-field); }
 .finding-trace > div { display: grid; grid-template-columns: minmax(75px, .7fr) minmax(0, 1.6fr); align-items: center; gap: 8px; min-height: 42px; padding: 9px 12px; }
 .finding-trace > div + div { border-top: 1px solid var(--line-soft); }
@@ -91,6 +98,11 @@
 .finding-dialog-facts dt { color: var(--meta); font-size: 11px; }
 .finding-dialog-facts dd { margin: 7px 0 0; color: var(--ink); font-size: 12px; font-weight: 750; overflow-wrap: anywhere; }
 .finding-dialog .finding-dialog-note { margin: 17px 0 0; color: var(--meta); font-size: 11px; }
+.finding-dialog .finding-dialog-error { margin: 16px 0 0; color: var(--risk-critical); }
+.finding-dialog .finding-dialog-pending { margin: 0 0 18px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--theme-field); color: var(--muted); }
+.finding-dialog-resolve { width: 100%; min-height: 44px; margin-top: 18px; border: 1px solid var(--teal); border-radius: 8px; background: var(--theme-surface-alt); color: var(--ink); font-size: 14px; font-weight: 800; }
+.finding-dialog-resolve:hover:not(:disabled) { background: var(--theme-field); }
+.finding-dialog-resolve:disabled { opacity: .6; cursor: wait; }
 
 @media (max-width: 1250px) {
   .findings-workspace { grid-template-columns: minmax(0, 2fr) minmax(310px, 1fr); }

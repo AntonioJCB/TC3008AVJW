@@ -30,6 +30,39 @@ def _texto(valor: Any, limite: int = MAX_CAMPO) -> str:
     texto = texto.replace("<", "‹").replace(">", "›")
     return texto[: limite - 1] + "…" if len(texto) > limite else texto
 
+def _resumen_cobertura(cobertura: Any) -> list[str]:
+    """Qué reglas se evaluaron y qué activos no se analizaron. Un 0 sin reglas evaluadas es 'no evaluado'."""
+    if not isinstance(cobertura, Mapping):
+        return []
+    lineas = ["Cobertura del análisis:"]
+    total, activas = cobertura.get("total_reglas"), cobertura.get("reglas_activas")
+    if total is not None and activas is not None:
+        lineas.append(f"- Reglas de riesgo activas: {activas} de {total}.")
+
+    def _por_prefijo(reglas: Any) -> str:
+        cuenta = Counter(
+            str(r.get("codigo") if isinstance(r, Mapping) else r).split("-")[0] for r in reglas or []
+        )
+        return ", ".join(f"{_texto(k, 20)}: {v}" for k, v in sorted(cuenta.items())) or "ninguna"
+
+    lineas.append(f"- Reglas evaluadas (prefijo: cantidad): {_por_prefijo(cobertura.get('evaluadas'))}.")
+    lineas.append(f"- Reglas sin evaluar (prefijo: cantidad): {_por_prefijo(cobertura.get('no_evaluadas'))}.")
+
+    infra = cobertura.get("infraestructura")
+    if isinstance(infra, Mapping):
+        activos = [a for a in infra.get("activos") or [] if isinstance(a, Mapping)]
+        if activos:
+            analizados = sum(1 for a in activos if a.get("incluido"))
+            lineas.append(
+                f"- Activos de infraestructura vistos: {len(activos)}; "
+                f"analizados con las fuentes: {analizados}; no analizados: {len(activos) - analizados}."
+            )
+            motivos = Counter(_texto(a.get("motivo"), 120) for a in activos if not a.get("incluido") and a.get("motivo"))
+            for motivo, n in motivos.most_common(5):
+                lineas.append(f"  · {n} sin analizar: {motivo}")
+        if infra.get("cobertura_incompleta"):
+            lineas.append("- La cobertura de infraestructura está marcada como incompleta.")
+    return lineas
 
 def construir_contexto(
     *,
@@ -59,10 +92,20 @@ def construir_contexto(
         for clave, nombre in CATEGORIAS:
             lineas.append(f"- {nombre}: {riesgo.get(clave)}")
         if riesgo.get("es_parcial"):
-            faltantes = ", ".join(_texto(f, 60) for f in riesgo.get("fuentes_faltantes") or []) or "alguna fuente"
-            lineas.append(
-                f"- AVISO: puntaje parcial, no se obtuvieron datos de: {faltantes}. Puede estar subestimado."
-            )
+            faltantes = ", ".join(_texto(f, 60) for f in riesgo.get("fuentes_faltantes") or [])
+            if faltantes:
+                lineas.append(
+                    f"- AVISO: puntaje parcial, no se obtuvieron datos de: {faltantes}. Puede estar subestimado."
+                )
+            else:
+                lineas.append(
+                    "- AVISO: puntaje parcial porque la cobertura del análisis es incompleta "
+                    "(ver Cobertura del análisis). Puede estar subestimado."
+                )
+        cobertura = _resumen_cobertura(riesgo.get("cobertura"))
+        if cobertura:
+            lineas.append("")
+            lineas.extend(cobertura)
     else:
         lineas.append("Riesgo: aún no calculado para este escaneo.")
 

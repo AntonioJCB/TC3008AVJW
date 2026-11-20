@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "API y procesamiento de datos para BaxterSec"
 requires-python = ">=3.11"
 dependencies = [
+  "anthropic>=2.11,<3",
   "fastapi>=0.120,<1",
   "pydantic-settings>=2.10,<3",
   "sqlalchemy>=2.0.45,<3",

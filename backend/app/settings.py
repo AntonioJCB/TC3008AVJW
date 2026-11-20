@@ -12,6 +12,11 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 DEFAULT_SPIDERFOOT_MODULES = "sfp_dnsresolve,sfp_dnsraw,sfp_robtex,sfp_crobat_api"
 
+def _clean_secret(value: str) -> str | None:
+    value = value.strip()
+    if not value or value.lower().startswith(("replace-", "pega-")):
+        return None
+    return value
 
 @dataclass(frozen=True)
 class Settings:
@@ -32,6 +37,9 @@ class Settings:
     frontend_url: str = "http://localhost:5173"
     crtsh_timeout_seconds: float = 60
     spiderfoot_modules: str = DEFAULT_SPIDERFOOT_MODULES
+    anthropic_api_key: str | None = None
+    anthropic_model: str = "claude-haiku-5-5"
+    assistant_max_tokens: int = 1000
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -85,6 +93,9 @@ class Settings:
             shodan_pause_seconds=float(os.getenv("SHODAN_PAUSE_SECONDS", "1.1")),
             frontend_url=os.getenv("FRONTEND_URL", "http://localhost:5173").strip().rstrip("/"),
             crtsh_timeout_seconds=float(os.getenv("CRTSH_TIMEOUT_SECONDS", "60")),
+            anthropic_api_key=_clean_secret(os.getenv("ANTHROPIC_API_KEY", "")),
+            anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-haiku-5-5").strip(),
+            assistant_max_tokens=int(os.getenv("ASSISTANT_MAX_TOKENS", "1000")),
         )
 
 

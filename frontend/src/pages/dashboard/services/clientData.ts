@@ -41,6 +41,14 @@ function assertResult(error: { message: string } | null) {
   if (error) throw new Error('No se pudieron consultar los datos de tu organización. Intenta actualizar la página.')
 }
 
+// El catálogo conserva fuentes retiradas para interpretar el historial.
+// La salud del último análisis usa sus fuentes, no todo el catálogo histórico.
+export function scanSources(data: ClientData): Source[] {
+  const executed = new Set(data.sourceResults.map((result) => result.fuente_id))
+  const current = new Set(['crt.sh', 'Censys', 'theHarvester', 'SpiderFoot'])
+  return data.sources.filter((source) => executed.size ? executed.has(source.id) : current.has(source.nombre))
+}
+
 export async function loadClientData(organizationId: string): Promise<ClientData> {
   if (!supabase) throw new Error('Supabase no está configurado.')
   const [orgResult, scanResult, assetResult, authorizationResult, sourceResult, ruleResult] = await Promise.all([

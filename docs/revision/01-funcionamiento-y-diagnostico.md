@@ -1,5 +1,11 @@
 # BaxterSec: funcionamiento y revisión del Risk Score
 
+> Este diagnóstico conserva la evidencia del 18 de noviembre. Desde el cambio
+> del 20 de noviembre Censys sustituye a Shodan para escaneos nuevos y el motor
+> local es 1.1.1. El catálogo Censys ya fue registrado en Supabase. Consulta las
+> [instrucciones actuales](02-ejecutar-proyecto.md) y la
+> [guía Censys](../backend/censys.md); los datos históricos descritos abajo no se recalcularon.
+
 Revisión del 18 de noviembre de 2026. Describe el checkout local, la imagen Docker
 existente y las consultas de lectura realizadas a Supabase. No se modificaron
 colectores, motor, interfaz, reglas, migraciones ni credenciales. Tampoco se

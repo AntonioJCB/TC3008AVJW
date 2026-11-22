@@ -17,7 +17,7 @@ DEFAULT_SPIDERFOOT_MODULES = "sfp_dnsresolve,sfp_dnsraw,sfp_robtex,sfp_crobat_ap
 class Settings:
     supabase_url: str
     supabase_service_role_key: str
-    shodan_api_key: str | None
+    censys_pat: str | None
     theharvester_bin: str
     theharvester_sources: str
     spiderfoot_url: str
@@ -27,8 +27,10 @@ class Settings:
     spiderfoot_poll_seconds: float
     scan_timeout_seconds: float
     crtsh_retries: int
-    shodan_max_ips: int
-    shodan_pause_seconds: float
+    censys_max_ips: int
+    censys_pause_seconds: float
+    censys_organization_id: str | None = None
+    censys_authorized_ips: str = ""
     frontend_url: str = "http://localhost:5173"
     crtsh_timeout_seconds: float = 60
     spiderfoot_modules: str = DEFAULT_SPIDERFOOT_MODULES
@@ -54,14 +56,16 @@ class Settings:
                 "las llaves sb_secret_ requieren actualizar y validar el SDK."
             )
 
-        shodan_api_key = os.getenv("SHODAN_API_KEY", "").strip()
-        if shodan_api_key.lower().startswith("replace-"):
-            shodan_api_key = ""
+        censys_pat = os.getenv("CENSYS_PAT", "").strip()
+        if censys_pat.lower().startswith("replace-"):
+            censys_pat = ""
 
         return cls(
             supabase_url=supabase_url,
             supabase_service_role_key=service_key,
-            shodan_api_key=shodan_api_key or None,
+            censys_pat=censys_pat or None,
+            censys_organization_id=os.getenv("CENSYS_ORGANIZATION_ID", "").strip() or None,
+            censys_authorized_ips=os.getenv("CENSYS_AUTHORIZED_IPS", "").strip(),
             theharvester_bin=os.getenv("THEHARVESTER_BIN", "theHarvester").strip(),
             theharvester_sources=os.getenv(
                 "THEHARVESTER_SOURCES", "certspotter,hackertarget"
@@ -81,8 +85,8 @@ class Settings:
             # Tiempo máximo por fuente; debe ser mayor que SPIDERFOOT_TIMEOUT_SECONDS.
             scan_timeout_seconds=float(os.getenv("SCAN_TIMEOUT_SECONDS", "2100")),
             crtsh_retries=int(os.getenv("CRTSH_RETRIES", "4")),
-            shodan_max_ips=int(os.getenv("SHODAN_MAX_IPS", "10")),
-            shodan_pause_seconds=float(os.getenv("SHODAN_PAUSE_SECONDS", "1.1")),
+            censys_max_ips=int(os.getenv("CENSYS_MAX_IPS", "10")),
+            censys_pause_seconds=float(os.getenv("CENSYS_PAUSE_SECONDS", "1.1")),
             frontend_url=os.getenv("FRONTEND_URL", "http://localhost:5173").strip().rstrip("/"),
             crtsh_timeout_seconds=float(os.getenv("CRTSH_TIMEOUT_SECONDS", "60")),
         )

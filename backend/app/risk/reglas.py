@@ -196,9 +196,9 @@ class DefinicionRegla:
 DEFINICIONES: dict[str, DefinicionRegla] = {
     d.codigo: d
     for d in (
-        DefinicionRegla("INFRA-001", ("Shodan", "SpiderFoot"), 0.70, _evaluador_puertos(PUERTOS_ADMIN_REMOTA)),
-        DefinicionRegla("INFRA-002", ("Shodan", "SpiderFoot"), 0.70, _evaluador_puertos(PUERTOS_BASE_DE_DATOS)),
-        DefinicionRegla("INFRA-003", ("Shodan", "SpiderFoot"), 0.50, _evaluar_cve),
+        DefinicionRegla("INFRA-001", ("Censys", "Shodan", "SpiderFoot"), 0.70, _evaluador_puertos(PUERTOS_ADMIN_REMOTA)),
+        DefinicionRegla("INFRA-002", ("Censys", "Shodan", "SpiderFoot"), 0.70, _evaluador_puertos(PUERTOS_BASE_DE_DATOS)),
+        DefinicionRegla("INFRA-003", ("Censys", "Shodan", "SpiderFoot"), 0.50, _evaluar_cve),
         DefinicionRegla("CONF-001", ("crt.sh",), 0.90, _evaluar_cert_expirado),
         DefinicionRegla("CONF-002", ("crt.sh",), 0.90, _evaluar_cert_por_expirar),
         DefinicionRegla("IDEN-003", ("theHarvester", "SpiderFoot"), 0.80, _evaluar_correos),

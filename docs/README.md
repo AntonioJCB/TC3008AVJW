@@ -6,6 +6,7 @@ Esta carpeta separa la documentación de cada componente. Describe el estado de
 | Área | Contenido |
 | --- | --- |
 | [Backend](backend/README.md) | Flujo de escaneos, API, configuración y límites actuales. |
+| [Censys](backend/censys.md) | Sustitución de Shodan, PAT, créditos, catálogo y pruebas. |
 | [Base de datos](database/README.md) | Modelo, migraciones, seed y acceso por organización. |
 | [Frontend](frontend/README.md) | Portal de cliente con datos reales, administración y trabajo pendiente de integración. |
 | [Siguientes pasos del backend](backend/siguientes-pasos.md) | Orden y criterios para continuar la corrección. |

@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Search, X } from 'lucide-react'
-import type { ClientData, Source, SourceResult } from '../../services/clientData'
+import { scanSources, type ClientData, type Source, type SourceResult } from '../../services/clientData'
 import LiveSourceLogDialog from './components/LiveSourceLogDialog'
 import './sources.css'
 
@@ -35,10 +35,10 @@ export default function LiveSourcesScreen({ data }: { data: ClientData }) {
   const [detailOpen, setDetailOpen] = useState(false)
   const closeDetail = useCallback(() => setDetailOpen(false), [])
   const results = useMemo(() => new Map(data.sourceResults.map((result) => [result.fuente_id, result])), [data.sourceResults])
-  const items = useMemo<SourceItem[]>(() => data.sources.map((source) => {
+  const items = useMemo<SourceItem[]>(() => scanSources(data).map((source) => {
     const result = results.get(source.id) ?? null
     return { source, result, status: state(result) }
-  }), [data.sources, results])
+  }), [data, results])
   const selected = items.find((item) => item.source.id === selectedId) ?? items.find((item) => item.status === 'error') ?? items[0] ?? null
   const healthy = items.filter((item) => item.status === 'healthy').length
   const issues = items.filter((item) => item.status === 'error').length

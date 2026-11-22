@@ -11,7 +11,7 @@
 -- tipo_acceso: 'publica' (sin llave) | 'api_key' (requiere llave)
 -- ---------------------------------------------------------------------
 INSERT INTO public.fuentes_osint (nombre, tipo_acceso) VALUES
-    ('Shodan',       'api_key'),
+    ('Censys',       'api_key'),
     ('SpiderFoot',   'herramienta_local'),
     ('theHarvester', 'herramienta_local'),
     ('crt.sh',       'publica')

@@ -22,15 +22,15 @@ class RunAllTests(unittest.IsolatedAsyncioTestCase):
             OrchestratorSettings(),
             runners={
                 "crt.sh": succeeds,
-                "Shodan": fails,
+                "Censys": fails,
                 "theHarvester": succeeds,
                 "SpiderFoot": succeeds,
             },
         )
 
-        self.assertEqual(set(outcomes), {"crt.sh", "Shodan", "theHarvester", "SpiderFoot"})
-        self.assertEqual(outcomes["Shodan"]["estado"], "fallido")
-        self.assertIn("provider unavailable", outcomes["Shodan"]["error"])
+        self.assertEqual(set(outcomes), {"crt.sh", "Censys", "theHarvester", "SpiderFoot"})
+        self.assertEqual(outcomes["Censys"]["estado"], "fallido")
+        self.assertIn("provider unavailable", outcomes["Censys"]["error"])
         for source in ("crt.sh", "theHarvester", "SpiderFoot"):
             self.assertEqual(outcomes[source]["estado"], "completado")
             self.assertEqual(outcomes[source]["contenido"], {"domain": "example.com"})
@@ -38,7 +38,7 @@ class RunAllTests(unittest.IsolatedAsyncioTestCase):
     async def test_provider_error_does_not_expose_query_credentials(self) -> None:
         async def fails(domain: str) -> None:
             request = httpx.Request(
-                "GET", "https://api.shodan.io/shodan/host/search?key=private-key"
+                "GET", "https://api.platform.censys.io/v3/global/asset/host/8.8.8.8?key=private-key"
             )
             response = httpx.Response(403, request=request)
             raise httpx.HTTPStatusError("request failed", request=request, response=response)
@@ -46,12 +46,12 @@ class RunAllTests(unittest.IsolatedAsyncioTestCase):
         outcomes = await run_all(
             "example.com",
             OrchestratorSettings(),
-            runners={"Shodan": fails},
+            runners={"Censys": fails},
         )
 
-        self.assertEqual(outcomes["Shodan"]["estado"], "fallido")
-        self.assertIn("403", outcomes["Shodan"]["error"])
-        self.assertNotIn("private-key", outcomes["Shodan"]["error"])
+        self.assertEqual(outcomes["Censys"]["estado"], "fallido")
+        self.assertIn("403", outcomes["Censys"]["error"])
+        self.assertNotIn("private-key", outcomes["Censys"]["error"])
 
 
 class ScanEndpointTests(unittest.TestCase):
@@ -78,7 +78,7 @@ class ScanEndpointTests(unittest.TestCase):
         self.addCleanup(main.app.dependency_overrides.clear)
 
         settings = SimpleNamespace(
-            shodan_api_key="test-key",
+            censys_pat="test-key",
             theharvester_bin="theHarvester",
             theharvester_sources="crtsh,certspotter",
             spiderfoot_url="http://127.0.0.1:5001",
@@ -90,14 +90,14 @@ class ScanEndpointTests(unittest.TestCase):
             scan_timeout_seconds=2100,
             crtsh_retries=3,
             crtsh_timeout_seconds=60,
-            shodan_max_ips=10,
-            shodan_pause_seconds=1.1,
+            censys_max_ips=10,
+            censys_pause_seconds=1.1,
         )
         outcomes = {
             name: {
-                "estado": "fallido" if name == "Shodan" else "completado",
-                "contenido": None if name == "Shodan" else [],
-                "error": "HTTP 403 from api.shodan.io" if name == "Shodan" else None,
+                "estado": "fallido" if name == "Censys" else "completado",
+                "contenido": None if name == "Censys" else [],
+                "error": "HTTP 403 from api.platform.censys.io" if name == "Censys" else None,
             }
             for name in main.SOURCE_NAMES
         }

@@ -1,10 +1,16 @@
 # Probar BaxterSec y distinguir un cero válido de una falla
 
-Revisión del 18 de noviembre de 2026. Las secciones de lectura no cambian la base.
+Revisión inicial del 18 de noviembre, actualizada el 20 de noviembre de 2026
+para Censys. Las secciones de lectura no cambian la base.
 Las secciones marcadas **con escritura** son un procedimiento futuro para un
 entorno de desarrollo autorizado; no se ejecutaron durante esta revisión.
 Consulta [funcionamiento y resultados observados](01-funcionamiento-y-diagnostico.md)
 y [arranque](02-ejecutar-proyecto.md).
+
+Estado actual: Censys está registrado en Supabase y el contenedor recibió el PAT.
+Se aplicó únicamente el cambio de catálogo; no se ejecutó un escaneo nuevo ni un
+recálculo persistente como parte de ese registro. El historial de migraciones del
+CLI no se alteró mediante el upsert de datos.
 
 ## 1. Qué prueba cada nivel
 
@@ -18,6 +24,14 @@ y [arranque](02-ejecutar-proyecto.md).
 | Escaneo integrado | UUID, crudos, observaciones y puntaje guardados | Ausencia de vulnerabilidades |
 
 ## 2. Tests existentes, sin consultas OSINT reales
+
+Actualización del cambio a Censys: la suite completa pasó **124 pruebas** y 11
+subtests en un entorno temporal con las dependencias de `pyproject.toml`.
+`tests/test_censys.py` cubre PAT, permisos/cuota, DNS, límites, aislamiento del
+alcance por dominio, formato Platform v3 y normalización hacia el motor de riesgo.
+La migración de catálogo se probó dos veces en PostgreSQL temporal y después se
+verificó el registro real mediante lectura en Supabase. Las limitaciones del
+entorno `.venv` antiguo que se describen debajo corresponden a la revisión inicial.
 
 Desde un entorno Python que tenga las dependencias de `backend/pyproject.toml`
 instaladas, entra a `backend`:
@@ -128,7 +142,7 @@ for nombre, observaciones in [('Solo inventario', [inventario]), ('Servicio SSH'
 PY
 ```
 
-Con el motor 1.1.0 local: inventario 0; SSH 13 e `INFRA-001`.
+Con los motores locales 1.1.0 y 1.1.1: inventario 0; SSH 13 e `INFRA-001`.
 Esto demuestra que el algoritmo puede producir positivos cuando recibe las
 condiciones exigidas. No demuestra que el objetivo real tenga SSH expuesto.
 No insertes fixtures en una organización real para forzar que la gráfica suba.
@@ -158,10 +172,25 @@ devolvió realmente cada herramienta. Cero observaciones puede deberse a una
 lista vacía, formato no soportado, información fuera de alcance o descarte por
 el adaptador. No es equivalente a «la herramienta encontró cero vulnerabilidades».
 
-Shodan: comprobar `/api-info` valida la llave; comprobar `/dns/resolve` valida
-permiso de ese endpoint; `/shodan/host/{ip}` tiene su propio resultado. Si falta
-Membership en DNS, no hay motivo para cambiar Supabase. No se revalidó la cuenta
-Shodan mediante una petición externa nueva en esta revisión.
+Censys sustituye a Shodan para análisis nuevos. Primero comprueba la carga del
+PAT sin mostrarlo:
+
+```bash
+docker compose exec backend python -c "from app.settings import get_settings; print('PAT configurado:', bool(get_settings().censys_pat))"
+```
+
+Después, para un dominio propio/autorizado, puedes hacer una prueba real que
+consume cuota de Censys pero no escribe en Supabase:
+
+```bash
+docker compose exec backend python -m app.check_censys --domain receta-gastro-centro-app.vercel.app
+```
+
+Se espera `completado` y un resumen de hosts, observaciones y descartes. Un
+resultado sin servicios puede ser correcto si Censys no tiene datos o si la IP
+es compartida y no está autorizada. HTTP 401 indica token; 403 permisos; 429 cuota
+o concurrencia. Un error de PAT antes de consultar no significa rechazo de Censys.
+La [guía Censys](../backend/censys.md) explica el alcance por dominio/IP.
 
 ## 7. Escaneo integrado nuevo — con escritura, pendiente de autorización
 
@@ -215,7 +244,9 @@ No se ejecutaron durante la revisión. En desarrollo, cuando se autorice:
 | 403 al crear | Perfil, rol, organización activa y autorización |
 | 404 de ruta en Supabase | URL REST frente a URL base y endpoint solicitado |
 | 502/503 backend | Logs, configuración, disponibilidad y RPC/tablas requeridas |
-| 403 Shodan | Plan/permisos de la cuenta, no instalación de Docker |
+| Falta CENSYS_PAT | Guardar el token real en backend/.env y recrear el contenedor |
+| 401/403 Censys | Token o permisos de cuenta/organización |
+| 429 Censys | Cuota o concurrencia; no cambiar Supabase |
 | Fuente completada pero vacía | Crudo, conteos y alcance; no asumir evidencia |
 | Muchas observaciones, score 0 | Tipos/atributos, pesos, reglas activas y versión |
 | Hallazgos históricos pero score 0 | El score local es por escaneo, no suma todo el inventario |

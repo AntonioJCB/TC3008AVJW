@@ -1,10 +1,44 @@
 # Ejecutar BaxterSec: Docker y frontend Vite
 
-Guía del checkout revisado el 18 de noviembre de 2026. Lee primero el
+Guía actualizada el 20 de noviembre de 2026: Docker, Censys y frontend Vite. Lee el
 [diagnóstico de versiones](01-funcionamiento-y-diagnostico.md): los puntajes de
 Supabase provienen también de motores posteriores al código local. Esta guía
 documenta comandos de operación; no autoriza por sí sola reconstrucciones,
 migraciones ni cambios de configuración en un entorno compartido.
+
+## Inicio rápido para este equipo
+
+El backend y SpiderFoot se ejecutan en Docker; el frontend corre aparte. No hace
+falta activar `backend/.venv` ni arrancar Uvicorn manualmente.
+
+En una terminal, desde la raíz:
+
+```bash
+cd /Users/willianlemus/Documents/Code/VScode/TC3008AVJW
+docker compose up -d --no-build
+docker compose ps
+curl -fsS http://127.0.0.1:8000/health
+docker compose exec backend python -c "from app.settings import get_settings; print('PAT configurado:', bool(get_settings().censys_pat))"
+```
+
+Se espera backend y SpiderFoot `healthy`, salud `disponible` y PAT `True`.
+En otra terminal:
+
+```bash
+cd /Users/willianlemus/Documents/Code/VScode/TC3008AVJW/frontend
+npm run dev -- --host 127.0.0.1 --strictPort
+```
+
+Abre http://127.0.0.1:5173/login. Si faltan dependencias, ejecuta `npm ci`
+antes de iniciar Vite. Si el puerto está ocupado, revisa si esa URL ya sirve la
+aplicación antes de intentar iniciar una segunda instancia.
+
+En otras computadoras sustituye la ruta por la raíz del clon local.
+
+El 20 de noviembre se registró Censys en el catálogo del Supabase configurado
+mediante un upsert de datos, y se verificó su unicidad y el ID conservado de
+Shodan. Esta operación no registra una migración en el historial del CLI.
+No vuelvas a ejecutar todo el seed ni migraciones antiguas para repetirla.
 
 ## 1. Requisitos y carpetas
 
@@ -37,7 +71,11 @@ Si existe `backend/.env`, consérvalo. Para una instalación nueva toma como mod
 ```dotenv
 SUPABASE_URL=https://TU-PROYECTO.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=TU_JWT_LEGACY_SERVICE_ROLE
-SHODAN_API_KEY=TU_LLAVE_SI_TIENES_ACCESO
+CENSYS_PAT=TU_PAT_REAL_DE_CENSYS
+CENSYS_ORGANIZATION_ID=
+CENSYS_AUTHORIZED_IPS=
+CENSYS_MAX_IPS=10
+CENSYS_PAUSE_SECONDS=1.1
 CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 FRONTEND_URL=http://localhost:5173
 ```
@@ -46,6 +84,20 @@ El SDK Python fijado es 2.15.3; la configuración actual exige llave legacy
 `service_role`. Una publicable no es válida para esa variable. La publicable
 del navegador y la privilegiada deben ser del mismo proyecto. No incluyas
 `/rest/v1` en `SUPABASE_URL`.
+
+Guarda `.env` antes de recrear el backend. Si solo cambiaste variables, no hace
+falta construir la imagen:
+
+```bash
+docker compose up -d --no-deps --force-recreate backend
+docker compose exec backend python -c "from app.settings import get_settings; print('PAT configurado:', bool(get_settings().censys_pat))"
+```
+
+Un valor que empieza con `replace-` es una plantilla y el código lo descarta.
+La versión en disco, no el texto sin guardar del editor, es la que lee Compose.
+No imprimas el PAT para diagnosticarlo. Para Vercel compartido conserva vacía
+la lista de IPs autorizadas salvo que tengas autorización sobre esa infraestructura.
+Consulta [Censys](../backend/censys.md) para el formato por dominio e IP.
 
 Compose sobrescribe estas dos variables dentro del contenedor:
 
@@ -84,7 +136,14 @@ docker compose up -d
 ```
 
 Este paso descarga herramientas y dependencias. No lo hagas para tratar de
-«reparar» automáticamente la diferencia entre puntajes 1.3.2 y código 1.1.0.
+«reparar» automáticamente la diferencia entre puntajes 1.3.2 y código local 1.1.1.
+
+Tras modificar código del backend sí se necesita reconstruir y recrear:
+
+```bash
+docker compose build backend
+docker compose up -d --no-deps --force-recreate backend
+```
 
 ## 4. Comprobar salud y herramientas
 

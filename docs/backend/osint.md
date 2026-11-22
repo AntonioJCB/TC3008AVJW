@@ -1,7 +1,8 @@
 # Puesta en marcha de fuentes OSINT
 
 El backend ejecuta cuatro adaptadores independientes. Un resultado `completado`
-con cero observaciones significa que la consulta terminó, pero no encontró datos.
+con cero observaciones significa que no quedó evidencia normalizable; revisa
+el crudo y los descartes antes de concluir que no encontró datos.
 `incompleto` significa que alguna fuente falló; `fallido`, que ninguna terminó.
 Los escaneos de prueba con IP `203.0.113.x` usan direcciones reservadas para
 documentación y no demuestran conectividad real de los proveedores.
@@ -20,7 +21,7 @@ Test-NetConnection 127.0.0.1 -Port 5001
 | Fuente | Requisito | Fallo frecuente | Acción |
 | --- | --- | --- | --- |
 | crt.sh | Acceso HTTPS a `crt.sh` | `ReadTimeout`, HTTP 429 o 502/504 | Hasta cuatro intentos con espera creciente; respeta `Retry-After` en HTTP 429 y espera 30 s cuando falta esa cabecera. Ajusta `CRTSH_TIMEOUT_SECONDS` si la red es lenta. Si crt.sh sigue caído, la fuente queda fallida para no presentar datos incompletos como cobertura sana. |
-| Shodan | Clave con acceso a `/dns/resolve` y `/shodan/host/{ip}` | HTTP 403 con `Requires membership or higher` | La clave puede ser válida y el plan insuficiente. Revisa el plan en `/api-info` y el acceso de la cuenta; no sirve cambiar de llave pública de Supabase. |
+| Censys | PAT Platform v3 y créditos para lookup de hosts | HTTP 401, 403, 429 | Configura `CENSYS_PAT`, revisa permisos/cuota; usa [la guía Censys](censys.md). DNS se resuelve localmente, sin buscador de pago. |
 | theHarvester | Ejecutable instalado en el mismo sistema donde corre FastAPI | `THEHARVESTER_BIN` apunta a otro equipo o el programa no está en `PATH` | Instala theHarvester por separado y fija `THEHARVESTER_BIN` a un ejecutable local. Por defecto consulta `certspotter,hackertarget`; comprueba `THEHARVESTER_SOURCES` en el `.env` real. |
 | SpiderFoot | Servidor web activo en `SPIDERFOOT_URL` | `ConnectError`, tiempo máximo o cancelación | Inicia SpiderFoot antes del análisis y verifica la URL desde FastAPI. El backend usa los módulos de `SPIDERFOOT_MODULES` para acotar la duración; el grupo `Passive` completo puede ejecutar módulos lentos o defectuosos. Una cancelación solicita detener también el trabajo remoto. |
 
@@ -50,4 +51,4 @@ forman parte de las dependencias de `backend/pyproject.toml`.
 
 Enlace a las instrucciones oficiales: [theHarvester](https://github.com/laramies/theHarvester/blob/master/docs/wiki/Installation.md),
 [SpiderFoot](https://github.com/smicallef/spiderfoot/blob/master/Dockerfile) y
-[API de Shodan](https://developer.shodan.io/api).
+[API de Censys Platform](https://docs.censys.com/reference/get-started).

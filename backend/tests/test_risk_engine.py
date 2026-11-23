@@ -3,7 +3,8 @@ from datetime import datetime, timedelta, timezone
 
 from app.risk.modelos import Hallazgo, Obs, Regla
 from app.risk.motor import (
-    CATEGORIAS, calcular_confianza, calcular_riesgo_potencial, combinar_riesgos,
+    CATEGORIAS, calcular_confianza, calcular_riesgo_confirmado,
+    calcular_riesgo_global_estimado, calcular_riesgo_potencial, combinar_riesgos,
     evaluar_riesgo, puntuar_hallazgos,
 )
 
@@ -44,6 +45,57 @@ def finding(rule, asset, level, *, confidence=0.8, age=0, state="abierto", evide
         nivel_evidencia=level, antiguedad_dias=age,
         motivo_no_confirmado="Pendiente de confirmación." if level == "potencial" else None,
     )
+
+
+class RiesgoGlobalTests(unittest.TestCase):
+    def test_global_conserva_precision_y_distingue_niveles(self):
+        r = Regla("r", "CONF-003", "SPF/DMARC", "configuracion", "baja", 1, True)
+        confirmado = finding(r, "a", "confirmada", confidence=0.8)
+        potencial = finding(r, "b", "potencial", confidence=0.01, age=360)
+        resultado = calcular_riesgo_global_estimado([confirmado, potencial], [r])
+        self.assertGreater(resultado["confirmado"], 0)
+        self.assertGreater(resultado["potencial"], 0)
+        self.assertGreater(resultado["puntaje_global"], resultado["confirmado"])
+        self.assertEqual(len(resultado["contribuciones"]), 2)
+        self.assertLess(resultado["contribuciones"][-1]["aporte"], 0.1)
+        self.assertAlmostEqual(calcular_riesgo_confirmado([confirmado], [r])["puntaje_global"], 0.92)
+        self.assertAlmostEqual(calcular_riesgo_potencial([potencial], [r])["puntaje_global"], 0.0025)
+        self.assertAlmostEqual(resultado["contribuciones"][-1]["aporte"], 0.00125)
+
+    def test_deduplica_y_descarta_resueltos_retirados_y_sin_atribucion(self):
+        r = Regla("r", "CONF-003", "SPF/DMARC", "configuracion", "media", 10, True)
+        confirmado = finding(r, "a", "confirmada")
+        potencial_mismo = finding(r, "a", "potencial")
+        resuelto = finding(r, "b", "confirmada", state="resuelto")
+        retirado = finding(r, "c", "potencial", evidence={"retirado_del_riesgo": True})
+        sin_activo = finding(r, "", "potencial")
+        actual = calcular_riesgo_global_estimado([confirmado, confirmado, potencial_mismo, resuelto, retirado, sin_activo], [r])
+        self.assertEqual(len(actual["contribuciones"]), 1)
+        self.assertEqual(actual["contribuciones"][0]["nivel_evidencia"], "confirmada")
+        self.assertEqual(actual["potencial"], 0)
+        self.assertEqual(calcular_riesgo_global_estimado([resuelto, retirado, sin_activo], [r])["puntaje_global"], 0)
+
+    def test_potencial_reciente_pesa_menos_y_disminuye_con_antiguedad(self):
+        r = Regla("r", "CONF-003", "SPF/DMARC", "configuracion", "alta", 10, True)
+        confirmado = calcular_riesgo_global_estimado([finding(r, "a", "confirmada")], [r])
+        reciente = calcular_riesgo_global_estimado([finding(r, "a", "potencial")], [r])
+        antiguo = calcular_riesgo_global_estimado([finding(r, "a", "potencial", age=360)], [r])
+        self.assertGreater(confirmado["puntaje_global"], reciente["puntaje_global"])
+        self.assertGreater(reciente["puntaje_global"], antiguo["puntaje_global"])
+        self.assertEqual(calcular_riesgo_global_estimado([], [r])["puntaje_global"], 0)
+
+    def test_actualizacion_y_sinteticos_en_los_tres_indicadores(self):
+        regla = Regla("r", "CONF-003", "SPF/DMARC", "configuracion", "baja", 1)
+        debil = finding(regla, "a", "confirmada", confidence=0.2)
+        fuerte = finding(regla, "a", "confirmada", confidence=0.9)
+        sinteticos = [finding(regla, "demo", nivel, evidence={"sintetico": True})
+                      for nivel in ("confirmada", "potencial")]
+        hallazgos = [debil, fuerte, *sinteticos]
+        self.assertAlmostEqual(calcular_riesgo_confirmado(hallazgos, [regla])["puntaje_global"], 0.96)
+        self.assertEqual(calcular_riesgo_potencial(hallazgos, [regla])["puntaje_global"], 0)
+        self.assertAlmostEqual(calcular_riesgo_global_estimado(hallazgos, [regla])["puntaje_global"], 0.96)
+        fuerte.estado = "resuelto"
+        self.assertAlmostEqual(calcular_riesgo_global_estimado(hallazgos, [regla])["puntaje_global"], 0.68)
 
 
 class RiesgoPotencialTests(unittest.TestCase):
@@ -258,11 +310,16 @@ class PosturaDnsTests(unittest.TestCase):
         self.assertEqual(codigos(result), ["CONF-003"])
         self.assertEqual(result.hallazgos[0].evidencia["detalle"]["problemas_dns"][0]["code"], "SPF_ALLOW_ALL")
 
-    def test_regla_inactiva_no_genera_hallazgo_aunque_exista_evidencia(self):
+    def test_regla_inactiva_conserva_evidencia_como_potencial_sin_puntuar(self):
         issue = {"code": "DMARC_MONITOR_ONLY", "message": "p=none", "severity": "media",
                  "evaluable": True, "rule": "CONF-003"}
         result = evaluar([self.dns("ej.com", "dmarc", [issue])])
-        self.assertNotIn("CONF-003", codigos(result))
+        self.assertIn("CONF-003", codigos(result))
+        finding = next(item for item in result.hallazgos if item.regla_codigo == "CONF-003")
+        self.assertEqual(finding.nivel_evidencia, "potencial")
+        self.assertIn("regla permanece inactiva", finding.motivo_no_confirmado)
+        self.assertEqual(result.puntaje.puntaje_global, 0)
+        self.assertGreater(result.puntaje.cobertura["riesgo_potencial"]["puntaje_global"], 0)
         self.assertEqual({row["codigo"]: row["motivo"] for row in result.puntaje.cobertura["no_evaluadas"]}["CONF-003"], "inactiva")
 
 
@@ -355,6 +412,15 @@ class CoberturaYFuentesTests(unittest.TestCase):
         r = evaluar([], {**TODAS_OK, "crt.sh": "ejecutando"})
         self.assertTrue(r.puntaje.es_parcial)
         self.assertEqual(self.motivos(r)["CONF-001"], "fuentes_fallidas")
+
+    def test_fuente_deshabilitada_informa_cobertura_sin_alterar_los_puntajes(self):
+        estado = {**TODAS_OK, "crt.sh": "deshabilitado"}
+        baseline = evaluar([], {name: value for name, value in estado.items() if name != "crt.sh"})
+        result = evaluar([], estado)
+        self.assertFalse(result.puntaje.es_parcial)
+        self.assertEqual(result.puntaje.puntaje_global, baseline.puntaje.puntaje_global)
+        self.assertEqual(result.puntaje.cobertura["riesgo_potencial"], baseline.puntaje.cobertura["riesgo_potencial"])
+        self.assertEqual(result.puntaje.cobertura["fuentes_deshabilitadas"], ["crt.sh"])
 
     def test_sin_informacion_de_fuentes_se_evalua_todo_y_no_es_parcial(self):
         r = evaluar([obs("servicio", "203.0.113.10:22/tcp", "servicio_expuesto")], estado={})

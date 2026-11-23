@@ -19,6 +19,14 @@ def resultados(**estados):
 
 
 class EstadoDelEscaneoTests(unittest.TestCase):
+    def test_crtsh_deshabilitado_no_impide_completar_fuentes_habilitadas(self):
+        rows = {"crt.sh": {"estado": "deshabilitado", "error": "Fuente deshabilitada temporalmente: CT"},
+                "theHarvester": OK, "SpiderFoot": OK}
+        self.assertEqual(compute_scan_state(rows), "completado")
+        message = scan_message("completado", rows)
+        self.assertIn("2 fuentes habilitadas", message)
+        self.assertIn("Deshabilitadas/no evaluadas: crt.sh", message)
+
     def test_todas_bien_es_completado(self):
         self.assertEqual(compute_scan_state({n: OK for n in SOURCE_NAMES}), "completado")
 
@@ -64,7 +72,7 @@ class MensajesTests(unittest.TestCase):
         self.assertIn("Terminaron correctamente: crt.sh, SpiderFoot", mensaje)
 
     def test_completado_en_curso_y_pendiente(self):
-        self.assertIn(f"{len(SOURCE_NAMES)} fuentes terminaron correctamente", scan_message("completado", {n: OK for n in SOURCE_NAMES}))
+        self.assertIn(f"{len(SOURCE_NAMES)} fuentes habilitadas terminaron correctamente", scan_message("completado", {n: OK for n in SOURCE_NAMES}))
         self.assertIn(f"2 de {len(SOURCE_NAMES)}", scan_message("ejecutando", {"crt.sh": OK, "theHarvester": KO, "SpiderFoot": {"estado": "ejecutando"}}))
         self.assertIn("pendiente", scan_message("pendiente", {}))
 
@@ -197,6 +205,38 @@ class RunScanJobTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(estado, "completado")
         self.assertEqual(finish.call_args.args[2], "completado")
         riesgo.assert_called_once()
+
+    async def test_flujo_completo_sin_crtsh_conserva_theharvester_y_completa(self):
+        settings = SimpleNamespace(**{**vars(self.SETTINGS), "crtsh_enabled": False})
+        outcomes = {
+            "theHarvester": {"estado": "completado", "error": None, "contenido": {"items": [1, 2, 3]}, "consultas": []},
+            "SpiderFoot": {"estado": "completado", "error": None, "contenido": [], "consultas": []},
+        }
+
+        async def collect(_domain, _settings, *, on_result, **_options):
+            for name, outcome in outcomes.items():
+                await on_result(name, outcome)
+            return outcomes
+
+        def persist(_client, _org, _scan, _source_id, name, _domain, outcome, previous=None, nvd_api_key=None):
+            return {"estado": outcome["estado"], "error": outcome["error"],
+                    "observaciones_generadas": 3 if name == "theHarvester" else 76}
+
+        with (
+            patch.object(scan_service, "run_all", side_effect=collect),
+            patch.object(scan_service, "_persist_source", side_effect=persist),
+            patch.object(scan_service, "_persist_disabled_source", return_value={
+                "estado": "deshabilitado", "error": "Fuente deshabilitada temporalmente: CT",
+            }),
+            patch.object(scan_service, "inventory", return_value=[]),
+            patch.object(scan_service, "build_coverage", return_value={"objetivos_pendientes": []}),
+            patch.object(scan_service, "_finish_scan", return_value=True),
+            patch.object(scan_service, "audit"),
+            patch.object(scan_service, "calcular_y_guardar"),
+        ):
+            state = await run_scan_job(object(), settings, self.SCAN, self.IDS, "ejemplo.com")
+        self.assertEqual(state, "completado")
+
 
     async def test_una_falla_las_otras_se_guardan_y_queda_incompleto(self):
         estado, persist, finish, riesgo = await self.correr({**{n: "ok" for n in SOURCE_NAMES}, "theHarvester": "ko"})

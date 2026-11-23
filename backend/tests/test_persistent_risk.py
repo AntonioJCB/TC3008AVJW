@@ -2,6 +2,7 @@
 
 import asyncio
 from dataclasses import replace
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
@@ -231,7 +232,40 @@ def test_calculo_guarda_el_puntaje_persistente_y_su_procedencia():
     payload = client.rpc.call_args.args[1]
     assert payload["p_puntaje"]["puntaje_global"] == resultado.puntaje.puntaje_global
     assert payload["p_puntaje"]["cobertura"]["riesgo_potencial"]["puntaje_global"] == 0
+    global_estimado = payload["p_puntaje"]["cobertura"]["riesgo_global_estimado"]
+    assert global_estimado["puntaje_global"] == global_estimado["confirmado"] > 0
+    assert payload["p_puntaje"]["cobertura"]["riesgo_confirmado"]["puntaje_global"] == global_estimado["confirmado"]
+    assert isinstance(payload["p_puntaje"]["puntaje_global"], int)
     assert payload["p_hallazgos"][0]["evidencia"]["pendiente_revalidacion"] is True
+
+
+def test_tls_potencial_subunitario_se_persiste_sin_subir_confirmado():
+    client = MagicMock()
+    tls = Obs("tls-1", "api", "subdominio", "api.example.com", "info_host", {
+        "tipo_evento": "URLSCAN_TLS_CERTIFICATE", "historico": True,
+        "verificado_actual": False, "evidencia_completa": True, "evaluable": True,
+        "valido_desde": "2026-10-01T00:00:00Z", "valido_hasta": "2026-11-25T00:00:00Z",
+        "issues": [{"code": "TLS_CERTIFICATE_EXPIRING_HISTORICAL", "rule": "CONF-007", "evaluable": True}],
+    }, "SpiderFoot", "sf", "2026-11-18T12:00:00Z")
+    rule = Regla("tls-rule", "CONF-007", "TLS próximo", "configuracion", "baja", 1, False)
+    with (
+        patch("app.risk.persistencia.cargar_observaciones", return_value=[tls]),
+        patch("app.risk.persistencia.leer_riesgo", return_value=None),
+        patch("app.risk.persistencia.cargar_reglas", return_value=[rule]),
+        patch("app.risk.persistencia.cargar_estado_fuentes", return_value=ESTADOS),
+        patch("app.risk.persistencia._alcance_escaneo", return_value="example.com"),
+        patch("app.risk.persistencia._hallazgos_previos", return_value=(None, [])),
+        patch("app.risk.persistencia._resueltos_en_escaneo", return_value=set()),
+    ):
+        calcular_y_guardar(client, "scan", datetime(2026, 11, 20, tzinfo=timezone.utc))
+    rpc, payload = client.rpc.call_args.args
+    assert rpc == "guardar_riesgo"
+    assert [h["evidencia"]["nivel_evidencia"] for h in payload["p_hallazgos"]] == ["potencial"]
+    coverage = payload["p_puntaje"]["cobertura"]
+    potential = coverage["riesgo_potencial"]["puntaje_global"]
+    assert coverage["riesgo_confirmado"]["puntaje_global"] == 0
+    assert 0 < potential < 1
+    assert coverage["riesgo_global_estimado"]["puntaje_global"] == potential * 0.5
 
 
 def test_no_importa_hallazgos_de_escaneos_anteriores_a_la_linea_base():

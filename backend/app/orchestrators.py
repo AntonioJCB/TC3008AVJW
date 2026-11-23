@@ -6,9 +6,10 @@ import json
 import logging
 import shutil
 import tempfile
+import time
 import uuid
 from datetime import datetime, timezone
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -32,17 +33,19 @@ logger = logging.getLogger(__name__)
 class OrchestratorSettings:
     shodan_api_key: str | None = None
     theharvester_bin: str = "theHarvester"
-    theharvester_sources: str = "certspotter,rapiddns,urlscan"
+    theharvester_sources: str = "certspotter,hackertarget,rapiddns,urlscan"
     spiderfoot_url: str = "http://127.0.0.1:5001"
     spiderfoot_modules: str = DEFAULT_SPIDERFOOT_MODULES
     request_timeout_seconds: float = 30
     process_timeout_seconds: float = 900
     spiderfoot_timeout_seconds: float = 1800
     spiderfoot_poll_seconds: float = 3
-    crtsh_retries: int = 4
+    crtsh_retries: int = 2
     shodan_max_ips: int = 10
     shodan_pause_seconds: float = 1.1
-    crtsh_timeout_seconds: float = 60
+    crtsh_timeout_seconds: float = 15
+    crtsh_total_timeout_seconds: float = 45
+    crtsh_enabled: bool = True
 
 
 Runner = Callable[[str], Awaitable[Any]]
@@ -51,6 +54,10 @@ OnResult = Callable[[str, dict[str, Any]], Awaitable[None]]
 # Se puede sustituir en pruebas para no esperar de verdad entre reintentos.
 _sleep = asyncio.sleep
 _REINTENTABLES = {429, 500, 502, 503, 504}
+# theHarvester no informa cuándo se reinicia la cuota. Tras quota-exhausted se
+# espera conservadoramente 24 h desde la respuesta; no sobrevive a reinicios.
+_HARVESTER_QUOTA_COOLDOWN_SECONDS = 24 * 60 * 60
+_harvester_quota_until: dict[str, float] = {}
 
 
 @dataclass(frozen=True)
@@ -177,11 +184,54 @@ async def run_all(
     * `timeout_seconds` limita cuánto puede tardar cada fuente; al agotarse se
       marca como fallida.
     """
-    selected_runners = runners or {
-        "crt.sh": lambda target: run_crtsh(target, settings, include_subdomains=target == domain),
-        "theHarvester": lambda target: run_theharvester(target, settings),
+    exhausted_sources: set[str] = set()
+
+    async def harvester_runner(target: str) -> RunnerOutput:
+        configured = [source.strip() for source in settings.theharvester_sources.split(",") if source.strip()]
+        now = time.monotonic()
+        available = [source for source in configured if source.lower() not in exhausted_sources
+                     and _harvester_quota_until.get(source.lower(), 0) <= now]
+        skipped = [source for source in configured if source not in available]
+        if not available:
+            return RunnerOutput({"items": [], "runs": [{"target": target, "source_executions": [
+                {"source": source, "status": "skipped", "stop_reason": "quota-exhausted", "result_count": 0}
+                for source in skipped
+            ]}]}, error="Proveedores omitidos por cuota agotada", failed=True)
+        output = await run_theharvester(target, replace(settings, theharvester_sources=",".join(available)))
+        if not isinstance(output, RunnerOutput):
+            output = RunnerOutput(output)
+        data = output.data
+        if isinstance(data, dict):
+            if skipped and not data.get("runs"):
+                data["runs"] = [{"target": target, "source_executions": []}]
+            for run in data.get("runs", []):
+                executions = run.get("source_executions", [])
+                for execution in executions:
+                    if isinstance(execution, dict) and (
+                        execution.get("status") == "rate-limited"
+                        or execution.get("stop_reason") == "quota-exhausted"
+                    ):
+                        source = str(execution.get("source", "")).lower()
+                        exhausted_sources.add(source)
+                        if source == "hackertarget" and execution.get("stop_reason") == "quota-exhausted":
+                            _harvester_quota_until[source] = time.monotonic() + _HARVESTER_QUOTA_COOLDOWN_SECONDS
+                executions.extend({"source": source, "status": "skipped", "stop_reason": "quota-exhausted", "result_count": 0}
+                                  for source in skipped)
+        error = output.error
+        if skipped:
+            error = "; ".join(filter(None, [error, "Proveedores omitidos por cuota agotada: " + ", ".join(skipped)]))
+        return RunnerOutput(data, output.ips_en_alcance, error=error, failed=output.failed)
+
+    default_runners = {
+        "theHarvester": harvester_runner,
         "SpiderFoot": lambda target: run_spiderfoot(target, settings),
     }
+    if settings.crtsh_enabled:
+        default_runners = {
+            "crt.sh": lambda target: run_crtsh(target, settings, include_subdomains=target == domain),
+            **default_runners,
+        }
+    selected_runners = runners if runners is not None else default_runners
 
     excluded_targets = dict(excluded_targets or {})
     selected_targets = [
@@ -216,10 +266,10 @@ async def run_all(
                 break
             known.update(new_targets)
             covered = _crtsh_covers_subdomains(outcomes.get("crt.sh"), domain)
-            additional_runners = (
-                {name: runner for name, runner in selected_runners.items() if name != "crt.sh"}
-                if covered else selected_runners
-            )
+            additional_runners = {
+                name: runner for name, runner in selected_runners.items()
+                if not (name == "crt.sh" and covered)
+            }
             additional = await run_all(
                 domain, settings,
                 additional_runners,
@@ -256,8 +306,9 @@ async def run_all(
         return outcomes
 
     async def run_one(name: str, runner: Runner) -> tuple[str, dict[str, Any]]:
+        domain_targets = [target for target in selected_targets if normalizar_ip(target) is None]
         if name in {"crt.sh", "theHarvester", "Web"}:
-            source_targets = [target for target in selected_targets if normalizar_ip(target) is None]
+            source_targets = domain_targets
         else:
             source_targets = selected_targets
         queries: list[dict[str, Any]] = []
@@ -283,14 +334,30 @@ async def run_all(
                         outputs.append(output)
                         successes.append(True)
                     queries.append({"objetivo": target, "estado": "fallido" if isinstance(output, RunnerOutput) and output.failed else "parcial" if isinstance(output, RunnerOutput) and output.error else "completado", "metodo": "consulta de fuente", "error": output.error if isinstance(output, RunnerOutput) else None})
-                    if (name == "crt.sh" and isinstance(outputs[-1], dict)
-                            and outputs[-1].get("version") == 1
-                            and any(q["query"] == f"%.{domain}" and q["status"] == "ok"
-                                    for q in outputs[-1]["queries"])):
-                        # La consulta de sufijo ya cubrió los nombres del inventario.
-                        # Repetir cada nombre eleva el tiempo y la carga de crt.sh.
-                        outputs[-1]["covered_targets"] = list(source_targets)
-                        queries.extend({"objetivo": value, "estado": "completado", "metodo": "consulta de sufijo CT", "error": None} for value in source_targets if value != target)
+                    if (name == "crt.sh" and target == domain and isinstance(outputs[-1], dict)
+                            and outputs[-1].get("version") == 1):
+                        suffix_ok = any(
+                            q.get("query") == f"%.{domain}" and q.get("status") == "ok"
+                            for q in outputs[-1].get("queries", [])
+                        )
+                        # La consulta wildcard es la única necesaria para cubrir los
+                        # subdominios. Si falla por cuota/proveedor, repetir cada nombre
+                        # amplifica el 429/5xx y no mejora la evidencia.
+                        if suffix_ok:
+                            outputs[-1]["covered_targets"] = list(source_targets)
+                        suffix_error = next((
+                            q.get("error") for q in outputs[-1].get("queries", [])
+                            if q.get("query") == f"%.{domain}" and q.get("status") == "error"
+                        ), None)
+                        queries.extend({
+                            "objetivo": value,
+                            "estado": "completado" if suffix_ok else "fallido",
+                            "metodo": "consulta de sufijo CT",
+                            "error": None if suffix_ok else (
+                                "No evaluado: falló la consulta wildcard de crt.sh"
+                                + (f" ({suffix_error})" if suffix_error else "")
+                            ),
+                        } for value in source_targets if value != target)
                         break
                 except Exception as error:
                     queries.append({"objetivo": target, "estado": "fallido", "metodo": "consulta de fuente", "error": _error_message(error)})
@@ -319,27 +386,34 @@ async def run_all(
 
 
 async def _crtsh_query(
-    client: httpx.AsyncClient, query: str, settings: OrchestratorSettings,
+    client: httpx.AsyncClient, query: str, settings: OrchestratorSettings, deadline: float,
 ) -> list[dict[str, Any]]:
     """Una búsqueda CT. Una respuesta vacía solo cuenta si llegó JSON válido."""
-    intentos = max(1, settings.crtsh_retries)
+    intentos = min(2, max(1, settings.crtsh_retries))
     for intento in range(1, intentos + 1):
         try:
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                raise TimeoutError("crt.sh agotó su presupuesto global de tiempo")
+            request_timeout = min(15.0, max(0.25, settings.crtsh_timeout_seconds), remaining)
             response = await client.get(
                 "https://crt.sh/", params={"q": query, "output": "json"},
                 headers={"Accept": "application/json"},
+                timeout=httpx.Timeout(request_timeout, connect=min(5, request_timeout)),
             )
             if response.status_code in _REINTENTABLES and intento < intentos:
                 retry_after = response.headers.get("Retry-After") if response.status_code == 429 else None
-                delay = 30 if response.status_code == 429 and not retry_after else min(2**intento, 30)
+                delay = 5 if response.status_code == 429 and not retry_after else min(2**intento, 3)
                 if retry_after:
                     try:
-                        delay = min(max(float(retry_after), delay), 60)
+                        delay = max(float(retry_after), delay)
                     except ValueError:
                         pass
-                logger.warning("crt.sh respondió HTTP %s; reintento %s/%s en %s s", response.status_code, intento, intentos, delay)
-                await _sleep(delay)
-                continue
+                remaining = deadline - asyncio.get_running_loop().time()
+                if 0 <= delay < remaining:
+                    logger.warning("crt.sh respondió HTTP %s; reintento %s/%s en %s s", response.status_code, intento, intentos, delay)
+                    await _sleep(delay)
+                    continue
             response.raise_for_status()
             if not response.text.strip():
                 raise ValueError("crt.sh respondió sin cuerpo JSON")
@@ -350,7 +424,10 @@ async def _crtsh_query(
         except (httpx.TimeoutException, httpx.TransportError):
             if intento == intentos:
                 raise
-            await _sleep(min(2**intento, 30))
+            delay = min(2**intento, 3)
+            if delay >= deadline - asyncio.get_running_loop().time():
+                raise
+            await _sleep(delay)
     raise RuntimeError("crt.sh agotó los reintentos")
 
 
@@ -362,15 +439,17 @@ async def run_crtsh(
     report: list[dict[str, Any]] = []
     entries: list[dict[str, Any]] = []
     errors: list[str] = []
-    timeout = httpx.Timeout(settings.crtsh_timeout_seconds, connect=min(10, settings.crtsh_timeout_seconds))
+    deadline = asyncio.get_running_loop().time() + max(1, settings.crtsh_total_timeout_seconds)
+    default_timeout = max(0.25, min(15, settings.crtsh_timeout_seconds))
+    timeout = httpx.Timeout(default_timeout, connect=min(5, default_timeout))
     async with httpx.AsyncClient(timeout=timeout) as client:
         for query in queries:
             checked_at = datetime.now(timezone.utc).isoformat()
             try:
-                found = await _crtsh_query(client, query, settings)
+                found = await _crtsh_query(client, query, settings, deadline)
                 entries.extend(found)
                 report.append({"query": query, "status": "ok", "entries": len(found), "checked_at": checked_at})
-            except (httpx.HTTPError, ValueError) as error:
+            except (httpx.HTTPError, ValueError, TimeoutError) as error:
                 reason = _error_message(error)
                 errors.append(f"{query}: {reason}")
                 report.append({"query": query, "status": "error", "entries": 0,
@@ -679,7 +758,9 @@ async def run_spiderfoot(domain: str, settings: OrchestratorSettings) -> RunnerO
     summaries = [report for report in passive_reports(payload) if report["target"] == domain]
     missing = (set(modules) & set(BAXTER_SPIDERFOOT_MODULES)) - {report["module"] for report in summaries}
     errors = [f"{report['provider']}: {report.get('error') or report['status']}"
-              for report in summaries if report["status"] not in {"ok", "empty", "unavailable"}]
+              for report in summaries
+              if report["module"] in modules
+              and report["status"] not in {"ok", "empty"}]
     if missing:
         errors.append("Sin constancia de ejecución de módulos: " + ", ".join(sorted(missing))
                       + ". Comprueba que la imagen SpiderFoot incluya el perfil pasivo v1")

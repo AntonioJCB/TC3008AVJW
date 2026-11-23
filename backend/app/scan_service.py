@@ -29,7 +29,12 @@ from app.ingestion import ingestar_resultado
 from app.orchestrators import OrchestratorSettings, Runner, run_all
 from app.risk.persistencia import calcular_y_guardar
 from app.settings import Settings
-from app.source_policy import ACTIVE_SOURCES
+from app.source_policy import (
+    ACTIVE_SOURCES,
+    CRTSH_DISABLED_REASON,
+    DISABLED_SOURCE_STATE,
+    is_disabled_source_result,
+)
 from app.scan_report import inventory, build_coverage
 
 logger = logging.getLogger(__name__)
@@ -131,8 +136,11 @@ def audit(
 
 def compute_scan_state(results: Mapping[str, Mapping[str, Any]]) -> str:
     """Estado final a partir del resultado de cada fuente. Una fuente ausente cuenta como fallida."""
-    completed = sum(1 for name in SOURCE_NAMES if results.get(name, {}).get("estado") == COMPLETADO)
-    if completed == len(SOURCE_NAMES) and not any(results.get(name, {}).get("error") for name in SOURCE_NAMES):
+    enabled = [name for name in SOURCE_NAMES if not is_disabled_source_result(
+        results.get(name, {}).get("estado"), results.get(name, {}).get("error")
+    )]
+    completed = sum(1 for name in enabled if results.get(name, {}).get("estado") == COMPLETADO)
+    if enabled and completed == len(enabled) and not any(results.get(name, {}).get("error") for name in enabled):
         return COMPLETADO
     return FALLIDO if completed == 0 else INCOMPLETO
 
@@ -142,6 +150,10 @@ def scan_message(scan_state: str, results: Mapping[str, Mapping[str, Any]]) -> s
     ok = [n for n in SOURCE_NAMES if results.get(n, {}).get("estado") == COMPLETADO and not results.get(n, {}).get("error")]
     failed = [n for n in SOURCE_NAMES if results.get(n, {}).get("estado") == "fallido"]
     partial = [n for n in SOURCE_NAMES if results.get(n, {}).get("estado") == COMPLETADO and results.get(n, {}).get("error")]
+    disabled = [n for n in SOURCE_NAMES if is_disabled_source_result(
+        results.get(n, {}).get("estado"), results.get(n, {}).get("error")
+    )]
+    enabled_count = len(SOURCE_NAMES) - len(disabled)
 
     def razon(name: str) -> str:
         error = str(results[name].get("error") or "").strip()
@@ -150,11 +162,12 @@ def scan_message(scan_state: str, results: Mapping[str, Mapping[str, Any]]) -> s
     if scan_state == PENDIENTE:
         return "El escaneo está pendiente de ejecución."
     if scan_state == EJECUTANDO:
-        return f"El escaneo está en curso: {len(ok) + len(failed) + len(partial)} de {len(SOURCE_NAMES)} fuentes han terminado."
+        return f"El escaneo está en curso: {len(ok) + len(failed) + len(partial)} de {enabled_count} fuentes habilitadas han terminado."
     if scan_state == CANCELADO:
         return "Análisis detenido. Se conservaron los resultados de las fuentes que habían terminado."
     if scan_state == COMPLETADO:
-        return f"Consultas finalizadas: las {len(SOURCE_NAMES)} fuentes terminaron correctamente. Consulta el reporte para conocer la cobertura y sus limitaciones."
+        limitation = f" Deshabilitadas/no evaluadas: {', '.join(disabled)}." if disabled else ""
+        return f"Consultas finalizadas: las {enabled_count} fuentes habilitadas terminaron correctamente.{limitation} Consulta el reporte para conocer la cobertura y sus limitaciones."
     if scan_state == INCOMPLETO:
         return (
             "Escaneo incompleto. "
@@ -187,7 +200,31 @@ def orchestrator_settings(settings: Settings) -> OrchestratorSettings:
         shodan_max_ips=settings.shodan_max_ips,
         shodan_pause_seconds=settings.shodan_pause_seconds,
         crtsh_timeout_seconds=settings.crtsh_timeout_seconds,
+        crtsh_total_timeout_seconds=getattr(settings, "crtsh_total_timeout_seconds", 45),
+        crtsh_enabled=getattr(settings, "crtsh_enabled", True),
     )
+
+
+def _persist_disabled_source(
+    client: Client, scan_id: str, source_id: str, reason: str,
+) -> dict[str, Any]:
+    """Conserva el catálogo sin simular una consulta ni exigir una migración."""
+    stored = {
+        "estado": PENDIENTE,
+        "error": reason,
+        "finalizado_en": _now(),
+        "observaciones_generadas": 0,
+        "activos_nuevos": 0,
+        "activos_existentes": 0,
+        "observaciones_nuevas": 0,
+        "observaciones_duplicadas": 0,
+        "descartadas": {},
+    }
+    _execute(
+        client.table("resultados_fuentes").update(stored)
+        .eq("escaneo_id", scan_id).eq("fuente_id", source_id)
+    )
+    return {**stored, "estado": DISABLED_SOURCE_STATE}
 
 
 def _source_ids(client: Client) -> dict[str, str]:
@@ -375,6 +412,11 @@ async def run_scan_job(
     persisted: dict[str, dict[str, Any]] = {}
     outcomes = {}
     coverage = None
+    disabled_sources = (
+        {"crt.sh": CRTSH_DISABLED_REASON}
+        if runners is None and not getattr(settings, "crtsh_enabled", True)
+        else {}
+    )
 
     async def on_result(name: str, outcome: dict[str, Any]) -> None:
         async with control.persistence_lock:
@@ -394,6 +436,14 @@ async def run_scan_job(
                     persisted[name] = {"estado": "fallido", "error": "No se pudo persistir el resultado de esta fuente"}
 
     try:
+        for name, reason in disabled_sources.items():
+            try:
+                persisted[name] = await run_in_threadpool(
+                    _persist_disabled_source, client, scan_id, source_ids[name], reason,
+                )
+            except Exception:
+                logger.exception("No se pudo registrar que %s está deshabilitada", name)
+                persisted[name] = {"estado": DISABLED_SOURCE_STATE, "error": reason}
         run_options = {
             "runners": runners, "on_result": on_result,
             "timeout_seconds": settings.scan_timeout_seconds,
@@ -417,6 +467,18 @@ async def run_scan_job(
                 logger.exception("Falló la ejecución de las fuentes del escaneo %s", scan_id)
         finally:
             cancelled.cancel()
+
+        outcomes.update({
+            name: {
+                "estado": DISABLED_SOURCE_STATE,
+                "error": reason,
+                "contenido": None,
+                "consultas": [],
+                "objetivos_pendientes": [],
+                "objetivos_omitidos": {},
+            }
+            for name, reason in disabled_sources.items()
+        })
 
         async with control.persistence_lock:
             if control.cancel_requested.is_set():
@@ -448,8 +510,10 @@ async def run_scan_job(
                 "fuentes_fallidas": {
                     n: persisted.get(n, {}).get("error") or "sin resultado"
                     for n in SOURCE_NAMES
-                    if persisted.get(n, {}).get("estado") != COMPLETADO or persisted.get(n, {}).get("error")
+                    if persisted.get(n, {}).get("estado") not in {COMPLETADO, DISABLED_SOURCE_STATE}
+                    or (persisted.get(n, {}).get("error") and persisted.get(n, {}).get("estado") == COMPLETADO)
                 },
+                "fuentes_deshabilitadas": disabled_sources,
             },
         )
 

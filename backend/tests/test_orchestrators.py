@@ -183,6 +183,7 @@ class RunAllTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(consulted.count(("crt.sh", "example.com")), 1)
         self.assertIn(("crt.sh", "api.example.com"), consulted)
+        self.assertEqual([row for row in consulted if row[0] == "theHarvester"], [("theHarvester", "example.com"), ("theHarvester", "api.example.com")])
         self.assertNotIn(("theHarvester", "8.8.8.8"), consulted)
         self.assertIn(("Shodan", "8.8.8.8"), consulted)
         self.assertEqual(results["theHarvester"]["contenido"]["hosts"], ["example.com", "api.example.com"])

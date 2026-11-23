@@ -54,6 +54,7 @@
 .source-status.healthy { color: var(--risk-low); }
 .source-status.partial { color: var(--bronze); }
 .source-status.error { color: var(--risk-critical); }
+.source-status.disabled { color: var(--muted); }
 .source-status svg { flex: none; }
 .source-empty { padding: 44px 20px; color: var(--muted); font-size: 13px; text-align: center; }
 

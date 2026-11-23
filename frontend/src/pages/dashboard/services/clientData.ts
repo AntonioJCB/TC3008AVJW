@@ -17,8 +17,10 @@ export type ScanCoverage = {
   fuentes: Record<string, { estado: string; error: string | null; consultas: TargetQuery[] }>
 }
 export type TargetQuery = { objetivo: string; fuente?: string; estado: string; metodo: string; error: string | null }
-export type PotentialRiskSummary = {
+export type ConfirmedRisk = {
   puntaje_global: number; infraestructura: number; identidad_digital: number; configuracion: number; fuga_de_datos: number
+}
+export type PotentialRiskSummary = ConfirmedRisk & {
   hallazgos: number; reglas: string[]
 }
 export type PotentialRisk = PotentialRiskSummary & {
@@ -26,7 +28,8 @@ export type PotentialRisk = PotentialRiskSummary & {
   contribuciones: { activo_id: string; regla: string; regla_activa: boolean; categoria: string; severidad: string; confianza: number; antiguedad_dias: number | null; factor_antiguedad: number; aporte_potencial: number }[]
   formula: string
 }
-export type Risk = { cobertura?: { infraestructura?: ScanCoverage; evaluadas?: string[]; no_evaluadas?: { codigo: string; motivo: string }[]; riesgo_potencial?: PotentialRisk }; escaneo_id: string; puntaje_global: number; infraestructura: number; identidad_digital: number; configuracion: number; fuga_de_datos: number; es_parcial: boolean; fuentes_faltantes: string[]; calculado_en: string }
+export type EstimatedGlobalRisk = { puntaje_global: number; confirmado: number; potencial: number; ponderacion_confirmada: number; ponderacion_potencial: number; formula: string; contribuciones: { activo_id: string; regla: string; nivel_evidencia: string; aporte: number }[] }
+export type Risk = { cobertura?: { infraestructura?: ScanCoverage; evaluadas?: string[]; no_evaluadas?: { codigo: string; motivo: string }[]; riesgo_confirmado?: ConfirmedRisk; riesgo_potencial?: PotentialRisk; riesgo_global_estimado?: EstimatedGlobalRisk }; escaneo_id: string; puntaje_global: number; infraestructura: number; identidad_digital: number; configuracion: number; fuga_de_datos: number; es_parcial: boolean; fuentes_faltantes: string[]; calculado_en: string }
 export type Finding = { id: string; escaneo_id: string; categoria: string; severidad: string; confianza: number; estado: string; activo_id: string; fuente_id: string; regla_id: string | null; evidencia: Record<string, unknown> | null }
 export type SourceResult = {
   id: string; fuente_id: string; resultado_crudo_id: string | null; estado: string; error: string | null

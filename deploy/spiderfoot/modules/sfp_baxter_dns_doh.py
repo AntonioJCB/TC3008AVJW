@@ -68,7 +68,7 @@ class sfp_baxter_dns_doh(SpiderFootPlugin):
                 url,
                 params=params,
                 headers={"Accept": "application/dns-json"},
-                timeout=30,
+                timeout=(5, 10),
                 allow_redirects=False,
                 verify=_combined_ca_bundle(ca_bundle),
             )

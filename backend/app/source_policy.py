@@ -2,9 +2,20 @@
 
 ACTIVE_SOURCES = ("crt.sh", "theHarvester", "SpiderFoot")
 
-# CONF-006 requiere validación TLS activa. CONF-007 conserva una señal histórica
-# de urlscan, pero no puntúa hasta corroborar el certificado servido actualmente.
-RETIRED_RISK_RULES = frozenset({
-    "CONF-001", "CONF-002",  # Necesitan una comprobación TLS activa de Web.
-    "CONF-006", "CONF-007",
-})
+DISABLED_SOURCE_STATE = "deshabilitado"
+DISABLED_SOURCE_PREFIX = "Fuente deshabilitada temporalmente:"
+CRTSH_DISABLED_REASON = (
+    f"{DISABLED_SOURCE_PREFIX} crt.sh continúa devolviendo HTTP 502; "
+    "no se evaluó Certificate Transparency y esa cobertura queda pendiente."
+)
+
+
+def is_disabled_source_result(state: str | None, error: str | None) -> bool:
+    return state == DISABLED_SOURCE_STATE or (
+        state == "pendiente" and str(error or "").startswith(DISABLED_SOURCE_PREFIX)
+    )
+
+# Las reglas retiradas requieren comprobaciones TLS activas.
+RETIRED_RISK_RULES = frozenset({"CONF-001", "CONF-002", "CONF-006"})
+# La evidencia histórica de urlscan solo califica como potencial.
+POTENTIAL_ONLY_RISK_RULES = frozenset({"CONF-004", "CONF-007", "CONF-008"})

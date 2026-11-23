@@ -13,6 +13,11 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 from app.spiderfoot_passive import DEFAULT_MODULES as DEFAULT_SPIDERFOOT_MODULES
 
 
+def _enabled(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    return default if value is None else value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class Settings:
     supabase_url: str
@@ -30,7 +35,9 @@ class Settings:
     shodan_max_ips: int
     shodan_pause_seconds: float
     frontend_url: str = "http://localhost:5173"
-    crtsh_timeout_seconds: float = 60
+    crtsh_timeout_seconds: float = 15
+    crtsh_total_timeout_seconds: float = 45
+    crtsh_enabled: bool = True
     spiderfoot_modules: str = DEFAULT_SPIDERFOOT_MODULES
     scan_max_targets: int = 20
     nvd_api_key: str | None = None
@@ -70,7 +77,7 @@ class Settings:
             nvd_api_key=nvd_api_key or None,
             theharvester_bin=os.getenv("THEHARVESTER_BIN", "theHarvester").strip(),
             theharvester_sources=os.getenv(
-                "THEHARVESTER_SOURCES", "certspotter,rapiddns,urlscan"
+                "THEHARVESTER_SOURCES", "certspotter,hackertarget,rapiddns,urlscan"
             ).strip(),
             spiderfoot_url=os.getenv(
                 "SPIDERFOOT_URL", "http://127.0.0.1:5001"
@@ -86,11 +93,17 @@ class Settings:
             spiderfoot_poll_seconds=float(os.getenv("SPIDERFOOT_POLL_SECONDS", "3")),
             # Tiempo máximo por fuente; debe ser mayor que SPIDERFOOT_TIMEOUT_SECONDS.
             scan_timeout_seconds=float(os.getenv("SCAN_TIMEOUT_SECONDS", "2100")),
-            crtsh_retries=int(os.getenv("CRTSH_RETRIES", "4")),
+            crtsh_retries=max(1, min(2, int(os.getenv("CRTSH_RETRIES", "2")))),
             shodan_max_ips=int(os.getenv("SHODAN_MAX_IPS", "10")),
             shodan_pause_seconds=float(os.getenv("SHODAN_PAUSE_SECONDS", "1.1")),
             frontend_url=os.getenv("FRONTEND_URL", "http://localhost:5173").strip().rstrip("/"),
-            crtsh_timeout_seconds=float(os.getenv("CRTSH_TIMEOUT_SECONDS", "60")),
+            crtsh_timeout_seconds=max(
+                1, min(15, float(os.getenv("CRTSH_TIMEOUT_SECONDS", "15")))
+            ),
+            crtsh_total_timeout_seconds=max(
+                10, min(90, float(os.getenv("CRTSH_TOTAL_TIMEOUT_SECONDS", "45")))
+            ),
+            crtsh_enabled=_enabled("CRTSH_ENABLED", True),
             scan_max_targets=max(1, min(100, int(os.getenv("SCAN_MAX_TARGETS", "20")))),
         )
 

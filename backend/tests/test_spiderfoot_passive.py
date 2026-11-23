@@ -406,14 +406,14 @@ def test_conf006_ct_urlscan_and_retired_web_evidence_never_score():
     assert "CONF-006" in RETIRED_RISK_RULES
 
 
-def _conf007_result(report, active=True, extra=None):
+def _conf007_result(report, active=True, extra=None, *, now=datetime(2026, 11, 20, tzinfo=timezone.utc)):
     rows = normalized(report)
     observations = [Obs(str(index), "asset-api", row["tipo"], row["valor"], row["atributo"],
                         row["datos"], "SpiderFoot", "sf", row.get("observado_en"))
                     for index, row in enumerate(rows)]
     observations.extend(extra or [])
     rule = Regla("conf007", "CONF-007", "Certificado próximo", "configuracion", "baja", 4, active)
-    return evaluar_riesgo(observations, [rule], {"SpiderFoot": "completado", "Web": "completado"}, NOW)
+    return evaluar_riesgo(observations, [rule], {"SpiderFoot": "completado", "Web": "completado"}, now)
 
 
 def _urlscan_tls_report(*, when="2026-11-18T12:00:00Z", valid_from="2026-10-01T00:00:00Z",
@@ -433,13 +433,21 @@ def test_conf007_recent_exact_urlscan_certificate_is_only_potential_while_inacti
     event = next(event for event in report["events"] if event["event_type"] == "URLSCAN_TLS_CERTIFICATE")
     assert event["metadata"]["evidencia_completa"] is True
     assert event["metadata"]["evaluable"] is True and 0 < event["metadata"]["dias_restantes"] <= 14
-    assert _conf007_result(report, active=False).puntaje.puntaje_global == 0
-    candidate = _conf007_result(report)
-    assert len(candidate.hallazgos) == 1
-    assert candidate.hallazgos[0].evidencia["detalle"]["potencial"] is True
-    assert candidate.hallazgos[0].evidencia["detalle"]["verificado_actual"] is False
+    for active in (False, True):
+        result = _conf007_result(report, active=active)
+        assert len(result.hallazgos) == 1
+        assert result.hallazgos[0].nivel_evidencia == "potencial"
+        assert result.hallazgos[0].evidencia["detalle"]["verificado_actual"] is False
+        assert result.puntaje.puntaje_global == 0
+        assert result.puntaje.cobertura["riesgo_potencial"]["puntaje_global"] > 0
     assert DEFINICIONES["CONF-007"].requiere_fuentes == ("SpiderFoot",)
-    assert "CONF-007" in RETIRED_RISK_RULES
+    assert "CONF-007" not in RETIRED_RISK_RULES
+
+
+def test_conf007_recalculo_rechaza_evidencia_caduca_o_futura():
+    report = _urlscan_tls_report()
+    assert _conf007_result(report, now=datetime(2026, 11, 26, tzinfo=timezone.utc)).hallazgos == []
+    assert _conf007_result(report, now=NOW).hallazgos == []
 
 
 @pytest.mark.parametrize("kwargs", [
@@ -774,6 +782,16 @@ def test_dns_doh_distinguishes_absence_failure_and_unverified_states():
     assert failed["status"] == "error" and "no fue evaluado" in failed["error"]
 
 
+def test_dns_doh_stops_after_two_consecutive_transport_failures():
+    fetch = Mock(side_effect=TimeoutError("fixture timeout"))
+    failed = collect("google_dns_doh", "example.com", fetch)
+    assert failed["status"] == "error"
+    assert fetch.call_count == 2
+    checks = [check for check in failed["checks"] if check["check"] not in {"spf", "dnssec", "dkim"}]
+    assert sum(check.get("error_type") == "provider_circuit_open" for check in checks) == len(DNS_QUERIES) - 2
+    assert "TimeoutError" in failed["error"]
+
+
 def test_dns_doh_infra004_dangling_cname_is_informational_and_exactly_attributed():
     records = {("api.example.com", "CNAME"): [(5, "orphan.vendor.example.")]}
     statuses = {("orphan.vendor.example", "A"): 3, ("orphan.vendor.example", "AAAA"): 3}
@@ -827,8 +845,11 @@ def test_dns_doh_prepares_conf_003_without_changing_rule_activation_or_weight():
     active = Regla("conf3", "CONF-003", "SPF/DMARC", "configuracion", "media", 10, esta_activa=True)
     disabled_result = evaluar_riesgo(observations, [inactive], {"SpiderFoot": "completado"}, NOW)
     enabled_result = evaluar_riesgo(observations, [active], {"SpiderFoot": "completado"}, NOW)
-    assert disabled_result.hallazgos == [] and disabled_result.puntaje.puntaje_global == 0
+    assert disabled_result.puntaje.puntaje_global == 0
+    assert [finding.regla_codigo for finding in disabled_result.hallazgos] == ["CONF-003"]
+    assert disabled_result.hallazgos[0].nivel_evidencia == "potencial"
     assert [finding.regla_codigo for finding in enabled_result.hallazgos] == ["CONF-003"]
+    assert enabled_result.puntaje.puntaje_global > 0
     finding = enabled_result.hallazgos[0]
     assert {issue["code"] for issue in finding.evidencia["detalle"]["problemas_dns"]} == {"DMARC_MONITOR_ONLY", "SPF_SOFTFAIL_ALL"}
     assert finding.activo_id == "asset" and finding.severidad == "media"
@@ -875,7 +896,8 @@ def test_dns_doh_conf003_rejects_invalid_dmarc_percentage(pct):
     assert {issue["code"] for issue in dmarc["issues"]} == {"DMARC_PCT_INVALID"}
 
 
-def test_dns_doh_conf003_inherits_only_authorized_root_dmarc_policy():
+@pytest.mark.parametrize("third_party_answer", [False, True])
+def test_dns_doh_conf003_inherits_only_authorized_root_dmarc_policy(third_party_answer):
     root = collect("google_dns_doh", "example.com", dns_fetch({
         ("_dmarc.example.com", "TXT"): [(16, '"v=DMARC1; p=reject; sp=none; pct=100"')],
     }))
@@ -883,8 +905,11 @@ def test_dns_doh_conf003_inherits_only_authorized_root_dmarc_policy():
     def child_fetch(url, params):
         code, data = base(url, params)
         if params["name"] == "_dmarc.api.example.com":
-            data["Answer"] = [{"name": "_dmarc.provider.net.", "type": 16, "TTL": 300,
-                               "data": '"v=DMARC1; p=none"'}]
+            if third_party_answer:
+                data["Answer"] = [{"name": "_dmarc.provider.net.", "type": 16, "TTL": 300,
+                                   "data": '"v=DMARC1; p=none"'}]
+            else:
+                data["Status"] = 3
         return code, data
     child = collect("google_dns_doh", "api.example.com", child_fetch)
     rows = normalized(root) + normalized(child)
@@ -892,11 +917,14 @@ def test_dns_doh_conf003_inherits_only_authorized_root_dmarc_policy():
                         row["atributo"], row["datos"], "SpiderFoot", "sf") for i, row in enumerate(rows)]
     active = Regla("conf3", "CONF-003", "SPF/DMARC", "configuracion", "media", 10, esta_activa=True)
     result = evaluar_riesgo(observations, [active], {"SpiderFoot": "completado"}, NOW)
+    assert not any(row["valor"] == "provider.net" for row in rows)
+    if third_party_answer:
+        assert result.hallazgos == []
+        return
     assert len(result.hallazgos) == 1 and result.hallazgos[0].activo_id == "child"
     detail = result.hallazgos[0].evidencia["detalle"]
     assert detail["dmarc_heredada_desde"] == "example.com"
     assert {issue["code"] for issue in detail["problemas_dns"]} == {"DMARC_INHERITED_MONITOR_ONLY"}
-    assert not any(row["valor"] == "provider.net" for row in rows)
 
 
 def test_dns_doh_conf003_exact_subdomain_policy_overrides_inheritance():
@@ -959,6 +987,9 @@ def test_profile_rejects_active_modules_and_migrates_legacy_preset():
     assert selected_modules("example.com", "sfp_baxter_commoncrawl") == [
         "sfp_baxter_commoncrawl",
     ]
+    assert selected_modules(
+        "example.com", "sfp_baxter_urlscan,sfp_baxter_commoncrawl,sfp_baxter_rdap",
+    ) == ["sfp_baxter_urlscan", "sfp_baxter_rdap"]
     with pytest.raises(ValueError):
         selected_modules(IP)
     assert selected_modules(IP, "sfp_baxter_internetdb,sfp_baxter_shodan") == ["sfp_baxter_internetdb", "sfp_baxter_shodan"]
@@ -1200,7 +1231,7 @@ def test_dns_doh_plugin_queries_only_the_exact_spiderfoot_target():
             plugin.handleEvent(types.SimpleNamespace(data="api.example.com"))
             plugin.handleEvent(types.SimpleNamespace(data="api.example.com"))
             assert get.call_count == len(DNS_QUERIES)
-            assert all(call.kwargs["allow_redirects"] is False and call.kwargs["timeout"] == 30
+            assert all(call.kwargs["allow_redirects"] is False and call.kwargs["timeout"] == (5, 10)
                        and call.kwargs["verify"] is True for call in get.call_args_list)
             assert {call.kwargs["params"]["name"] for call in get.call_args_list} == {
                 "api.example.com", "_dmarc.api.example.com", "_mta-sts.api.example.com", "_smtp._tls.api.example.com"

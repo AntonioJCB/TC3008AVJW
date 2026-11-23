@@ -8,10 +8,19 @@ from typing import Any, Callable
 
 from app.osint_normalization import parsear_servicio
 from app.risk.modelos import Hallazgo, Obs, Regla, ResultadoRiesgo
-from app.risk.motor import aporte_hallazgo, calcular_riesgo_potencial, evaluar_riesgo, puntuar_hallazgos
+from app.risk.motor import (
+    aporte_hallazgo, calcular_riesgo_confirmado, calcular_riesgo_global_estimado,
+    calcular_riesgo_potencial, evaluar_riesgo,
+)
 from app.risk.reglas import DEFINICIONES
 from app.scan_scope import scope_allows_domain, scope_allows_ip
-from app.source_policy import ACTIVE_SOURCES, RETIRED_RISK_RULES
+from app.source_policy import (
+    ACTIVE_SOURCES,
+    DISABLED_SOURCE_STATE,
+    POTENTIAL_ONLY_RISK_RULES,
+    RETIRED_RISK_RULES,
+    is_disabled_source_result,
+)
 
 PAGINA = 1000
 ORDEN_SEVERIDAD = {"critica": 0, "alta": 1, "media": 2, "baja": 3}
@@ -78,7 +87,11 @@ def cargar_estado_fuentes(client: Any, scan_id: str) -> dict[str, str]:
         or []
     )
     return {
-        f["fuentes_osint"]["nombre"]: "parcial" if f["estado"] == "completado" and f.get("error") else f["estado"]
+        f["fuentes_osint"]["nombre"]: (
+            DISABLED_SOURCE_STATE
+            if is_disabled_source_result(f.get("estado"), f.get("error"))
+            else "parcial" if f["estado"] == "completado" and f.get("error") else f["estado"]
+        )
         for f in filas if f.get("fuentes_osint")
         and f["fuentes_osint"]["nombre"] in ACTIVE_SOURCES
     }
@@ -222,7 +235,9 @@ def _consolidar_hallazgos(
         if clave in vigentes or clave in resueltos or regla is None or not anterior_id:
             continue
         evidencia = dict(row.get("evidencia") or {})
-        if evidencia.get("retirado_del_riesgo") is True:
+        if (evidencia.get("retirado_del_riesgo") is True
+                or regla.codigo == "CONF-007"
+                or (regla.codigo in POTENTIAL_ONLY_RISK_RULES and evidencia.get("nivel_evidencia") != "potencial")):
             continue
         evidencia["ultimo_escaneo_con_evidencia"] = evidencia.get("ultimo_escaneo_con_evidencia") or anterior_id
         evidencia["pendiente_revalidacion"] = True
@@ -293,9 +308,15 @@ def calcular_y_guardar(client: Any, scan_id: str, ahora: datetime | None = None,
     historico_anterior = bool(
         riesgo_existente and not (riesgo_existente.get("cobertura") or {}).get("persistencia_hallazgos")
     )
+    report = report or (riesgo_existente or {}).get("cobertura", {}).get("infraestructura")
+    sinteticos = {
+        str(activo["id"]) for activo in (report or {}).get("activos", [])
+        if activo.get("id") and activo.get("clasificacion_exposicion") == "historico_sintetico"
+    }
     scope = _alcance_escaneo(client, scan_id)
     observaciones, excluidas = _observaciones_atribuidas(
-        [obs for obs in cargar_observaciones(client, scan_id) if obs.fuente in ACTIVE_SOURCES], scope
+        [obs for obs in cargar_observaciones(client, scan_id)
+         if obs.fuente in ACTIVE_SOURCES and obs.activo_id not in sinteticos], scope
     )
     # La política impide puntuar Web aunque el catálogo remoto aún no se haya actualizado.
     reglas = [replace(regla, esta_activa=False) if regla.codigo in RETIRED_RISK_RULES else regla
@@ -304,15 +325,20 @@ def calcular_y_guardar(client: Any, scan_id: str, ahora: datetime | None = None,
         observaciones, reglas, cargar_estado_fuentes(client, scan_id), ahora
     )
     anterior_id, anteriores = (None, []) if historico_anterior else _hallazgos_previos(client, scan_id)
-    anteriores = [row for row in anteriores if _hallazgo_atribuido(row, scope)]
+    anteriores = [row for row in anteriores
+                  if row["activo_id"] not in sinteticos and _hallazgo_atribuido(row, scope)]
     resultado.hallazgos, arrastrados = _consolidar_hallazgos(
         resultado.hallazgos, anteriores, _resueltos_en_escaneo(client, scan_id),
         reglas, scan_id, anterior_id,
     )
-    puntuacion = puntuar_hallazgos(resultado.hallazgos, reglas)
-    for campo, valor in puntuacion.items():
-        setattr(resultado.puntaje, campo, valor)
+    confirmado = calcular_riesgo_confirmado(resultado.hallazgos, reglas)
+    for campo, valor in confirmado.items():
+        setattr(resultado.puntaje, campo, round(valor))
+    resultado.puntaje.cobertura["riesgo_confirmado"] = confirmado
     resultado.puntaje.cobertura["riesgo_potencial"] = calcular_riesgo_potencial(
+        resultado.hallazgos, reglas,
+    )
+    resultado.puntaje.cobertura["riesgo_global_estimado"] = calcular_riesgo_global_estimado(
         resultado.hallazgos, reglas,
     )
     resultado.puntaje.es_parcial = resultado.puntaje.es_parcial or arrastrados > 0
@@ -322,7 +348,6 @@ def calcular_y_guardar(client: Any, scan_id: str, ahora: datetime | None = None,
         "hallazgos_pendientes_revalidacion": arrastrados,
         "observaciones_servicio_sin_ip_autorizada": excluidas,
     })
-    report = report or (riesgo_existente or {}).get("cobertura", {}).get("infraestructura")
     if report:
         _actualizar_exposicion(report, resultado.hallazgos, reglas)
         resultado.puntaje.cobertura["infraestructura"] = report

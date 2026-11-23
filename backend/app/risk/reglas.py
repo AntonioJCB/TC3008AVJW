@@ -254,8 +254,12 @@ def _evaluar_postura_dns(observaciones: Sequence[Obs], ahora: datetime) -> list[
         if not group or group[0].tipo != "subdominio":
             continue
         exact = next((o for o in group if o.datos.get("check") == "dmarc"), None)
-        if (exact is None or exact.datos.get("politicas_dmarc")
-                or exact.datos.get("registros")):
+        # El normalizador conserva NXDOMAIN como RCODE 3 aunque el estado
+        # quede sin verificar por la posible herencia. Con RCODE 0 no distingue
+        # una respuesta vacía de registros de otro propietario descartados.
+        if (exact is None or exact.datos.get("estado") not in {"absent", "unverified"}
+                or exact.datos.get("rcode") != 3
+                or exact.datos.get("politicas_dmarc") or exact.datos.get("registros")):
             continue
         roots = [(root_id, root, policy) for root_id, root, policy in domain_policies
                  if group[0].valor.endswith("." + root.valor)]
@@ -349,30 +353,42 @@ def _evaluar_cert_proximo_urlscan(observaciones: Sequence[Obs], ahora: datetime)
     candidates = []
     for asset_id, group in groups.items():
         dated = [(date, observation) for observation in group
-                 if (date := _fecha(observation.observado_en)) is not None]
+                 if (date := _fecha(observation.observado_en)) is not None and date <= ahora]
         if not dated:
             continue
         latest_date = max(date for date, _observation in dated)
-        latest = [observation for date, observation in dated if date == latest_date]
-        risky = [observation for observation in latest if observation.datos.get("evaluable") is True]
-        issues = [issue for observation in risky
-                  for issue in (observation.datos.get("issues")
-                                if isinstance(observation.datos.get("issues"), list) else [])
-                  if isinstance(issue, dict) and issue.get("rule") == "CONF-007"
-                  and issue.get("evaluable") is True]
-        if not risky or not issues:
+        age = ahora - latest_date
+        if age > timedelta(days=7):
             continue
-        candidates.append(Candidato(asset_id, risky, {
-            "activo": risky[0].valor,
-            "vence_el": risky[0].datos.get("valido_hasta"),
-            "dias_restantes": risky[0].datos.get("dias_restantes"),
-            "emisor": risky[0].datos.get("emisor"),
+        risky = []
+        for date, observation in dated:
+            data = observation.datos
+            begins = _fecha(data.get("valido_desde"))
+            expires = _fecha(data.get("valido_hasta"))
+            issues = data.get("issues")
+            if (date == latest_date and data.get("evaluable") is True
+                    and begins and expires and begins <= date < ahora + timedelta(microseconds=1)
+                    and ahora < expires <= ahora + timedelta(days=14)
+                    and isinstance(issues, list)
+                    and any(isinstance(issue, dict)
+                            and issue.get("code") == "TLS_CERTIFICATE_EXPIRING_HISTORICAL"
+                            and issue.get("rule") == "CONF-007" and issue.get("evaluable") is True
+                            for issue in issues)):
+                risky.append((expires, observation))
+        if not risky:
+            continue
+        expires, matching = min(risky, key=lambda item: (item[0], item[1].id))
+        candidates.append(Candidato(asset_id, [matching], {
+            "activo": matching.valor,
+            "vence_el": matching.datos.get("valido_hasta"),
+            "dias_restantes": round((expires - ahora).total_seconds() / 86400, 1),
+            "emisor": matching.datos.get("emisor"),
             "respuesta_observada_en": latest_date.isoformat(),
-            "referencias": sorted({reference for observation in risky
-                                   for reference in observation.datos.get("referencias", [])
+            "referencias": sorted({reference for reference in matching.datos.get("referencias", [])
                                    if isinstance(reference, str)}),
             "historico": True, "potencial": True, "verificado_actual": False,
-        }))
+        }, nivel_evidencia="potencial", antiguedad_dias=age.days,
+            motivo_no_confirmado="urlscan observó ese certificado en una visita histórica; el certificado actual requiere verificación."))
     return candidates
 
 

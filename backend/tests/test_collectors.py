@@ -82,19 +82,67 @@ class RunAllCallbackTests(unittest.IsolatedAsyncioTestCase):
 
 
 class CrtshTests(unittest.IsolatedAsyncioTestCase):
+    async def test_configuracion_deshabilitada_no_invoca_crtsh(self):
+        with (
+            patch.object(orchestrators, "run_crtsh") as crt,
+            patch.object(orchestrators, "run_theharvester", return_value=[]),
+            patch.object(orchestrators, "run_spiderfoot", return_value=[]),
+        ):
+            result = await run_all("ejemplo.com", OrchestratorSettings(crtsh_enabled=False))
+        self.assertEqual(set(result), {"theHarvester", "SpiderFoot"})
+        crt.assert_not_called()
+
+    async def test_fallo_wildcard_no_multiplica_consultas_por_subdominio(self):
+        llamados = []
+        async def failed(target):
+            llamados.append(target)
+            return RunnerOutput({
+                "version": 1, "entries": [], "covered_targets": [target],
+                "queries": [{"query": f"%.{target}", "status": "error", "error": "HTTP 429 from crt.sh"}],
+            }, error="HTTP 429 from crt.sh", failed=True)
+        result = (await run_all(
+            "ejemplo.com", OrchestratorSettings(), runners={"crt.sh": failed},
+            targets=["ejemplo.com", "api.ejemplo.com", "www.ejemplo.com"],
+        ))["crt.sh"]
+        self.assertEqual(llamados, ["ejemplo.com"])
+        self.assertEqual(result["estado"], "fallido")
+        self.assertEqual([row["estado"] for row in result["consultas"]], ["fallido"] * 3)
+        self.assertTrue(all("wildcard" in (row.get("error") or "")
+                            for row in result["consultas"][1:]))
+
+    async def test_wildcard_valido_conserva_observaciones_y_cubre_subdominios(self):
+        llamados = []
+        entry = {"id": 7, "name_value": "api.ejemplo.com"}
+        async def completed(target):
+            llamados.append(target)
+            return RunnerOutput({
+                "version": 1, "entries": [entry], "covered_targets": [target],
+                "queries": [{"query": f"%.{target}", "status": "ok", "entries": 1}],
+            })
+        result = (await run_all(
+            "ejemplo.com", OrchestratorSettings(), runners={"crt.sh": completed},
+            targets=["ejemplo.com", "api.ejemplo.com", "www.ejemplo.com"],
+        ))["crt.sh"]
+        self.assertEqual(llamados, ["ejemplo.com"])
+        self.assertEqual(result["contenido"]["entries"], [entry])
+        self.assertEqual(result["contenido"]["covered_targets"], [
+            "ejemplo.com", "api.ejemplo.com", "www.ejemplo.com",
+        ])
+        self.assertEqual([row["estado"] for row in result["consultas"]], ["completado"] * 3)
+
     async def test_reintenta_con_espera_creciente_y_termina_bien(self):
-        respuestas = iter([httpx.Response(502), httpx.Response(504), httpx.Response(200, json=[{"id": 1}]), httpx.Response(200, json=[])])
+        respuestas = iter([httpx.Response(502), httpx.Response(200, json=[{"id": 1}]), httpx.Response(200, json=[])])
         pausas = Pausas()
         with with_transport(lambda request: next(respuestas)), patch.object(orchestrators, "_sleep", pausas):
             datos = await run_crtsh("ejemplo.com", OrchestratorSettings(crtsh_retries=3))
         self.assertEqual(datos.data["entries"], [{"id": 1}])
-        self.assertEqual(pausas.valores, [2, 4])
+        self.assertEqual(pausas.valores, [2])
 
     async def test_agota_los_reintentos_y_falla_sin_exponer_la_url(self):
         pausas = Pausas()
         with with_transport(lambda request: httpx.Response(503)), patch.object(orchestrators, "_sleep", pausas):
             result = await run_crtsh("ejemplo.com", OrchestratorSettings(crtsh_retries=3))
-        self.assertEqual(len(pausas.valores), 4)
+        self.assertEqual(len(pausas.valores), 2)
         self.assertTrue(result.failed)
         self.assertIn("503", result.error)
         self.assertEqual(len(result.data["queries"]), 2)
@@ -120,7 +168,7 @@ class CrtshTests(unittest.IsolatedAsyncioTestCase):
 
         with with_transport(handler):
             await run_crtsh("ejemplo.com", OrchestratorSettings(request_timeout_seconds=5, crtsh_timeout_seconds=60))
-        self.assertEqual(limites, [60, 60])
+        self.assertEqual(limites, [15, 15])
 
     async def test_un_error_4xx_no_se_reintenta(self):
         llamadas = []
@@ -149,7 +197,21 @@ class CrtshTests(unittest.IsolatedAsyncioTestCase):
         respuestas = iter([httpx.Response(429), httpx.Response(200, json=[]), httpx.Response(200, json=[])])
         with with_transport(lambda request: next(respuestas)), patch.object(orchestrators, "_sleep", pausas):
             self.assertEqual((await run_crtsh("ejemplo.com", OrchestratorSettings(crtsh_retries=2))).data["entries"], [])
-        self.assertEqual(pausas.valores, [30])
+        self.assertEqual(pausas.valores, [5])
+
+    async def test_retry_after_mayor_al_presupuesto_no_reintenta(self):
+        pausas = Pausas()
+        llamadas = []
+        def handler(request):
+            llamadas.append(str(request.url.params.get("q")))
+            return httpx.Response(429, headers={"Retry-After": "120"})
+        with with_transport(handler), patch.object(orchestrators, "_sleep", pausas):
+            result = await run_crtsh(
+                "ejemplo.com", OrchestratorSettings(crtsh_total_timeout_seconds=10)
+            )
+        self.assertTrue(result.failed)
+        self.assertEqual(llamadas, ["%.ejemplo.com", "ejemplo.com"])
+        self.assertEqual(pausas.valores, [])
 
     async def test_sin_subdominios_consulta_certificado_del_dominio_exacto(self):
         consultas = []
@@ -390,6 +452,72 @@ class SpiderFootTests(unittest.IsolatedAsyncioTestCase):
 
 
 class TheHarvesterTests(unittest.IsolatedAsyncioTestCase):
+    async def test_cuota_se_recuerda_entre_analisis_y_expira(self):
+        calls = []
+
+        async def collector(target, settings):
+            calls.append(settings.theharvester_sources)
+            limited = len(calls) == 1
+            return RunnerOutput({
+                "items": [{"type": "hostname", "value": "api.ejemplo.com", "sources": ["certspotter"]}],
+                "runs": [{"target": target, "source_executions": [
+                    {"source": "hackertarget", "status": "rate-limited", "stop_reason": "quota-exhausted"}
+                ] if limited else [{"source": "certspotter", "status": "completed"}]}],
+            }, error="cuota agotada" if limited else None)
+
+        settings = OrchestratorSettings(crtsh_enabled=False)
+        with (patch.dict(orchestrators._harvester_quota_until, {}, clear=True),
+              patch.object(orchestrators.time, "monotonic", return_value=100) as clock,
+              patch.object(orchestrators, "run_theharvester", side_effect=collector),
+              patch.object(orchestrators, "run_spiderfoot", return_value=[])):
+            first = (await run_all("ejemplo.com", settings))["theHarvester"]
+            second = (await run_all("ejemplo.com", settings))["theHarvester"]
+            clock.return_value += orchestrators._HARVESTER_QUOTA_COOLDOWN_SECONDS + 1
+            third = (await run_all("ejemplo.com", settings))["theHarvester"]
+        self.assertIn("hackertarget", calls[0])
+        self.assertNotIn("hackertarget", calls[1])
+        self.assertIn("hackertarget", calls[2])
+        self.assertEqual(len(second["contenido"]["items"]), 1)
+        self.assertIn("cuota agotada", second["error"])
+        self.assertIn("cuota agotada", first["error"])
+        self.assertIsNone(third["error"])
+    async def test_agotamiento_omite_proveedor_solo_en_consultas_posteriores(self):
+        calls = []
+        warning = "theHarvester no completó la consulta de: hackertarget (rate-limited: quota-exhausted)"
+
+        async def partial(target, settings):
+            calls.append((target, settings.theharvester_sources))
+            is_root = target == "ejemplo.com"
+            return RunnerOutput({
+                "hosts": ["api.ejemplo.com"], "ips": [], "emails": [], "asns": [],
+                "items": [{"type": "hostname", "value": "api.ejemplo.com",
+                           "sources": ["certspotter"], "targets": [target]}],
+                "runs": [{"target": target, "source_executions": [
+                    {"source": "hackertarget", "status": "rate-limited",
+                     "stop_reason": "quota-exhausted", "result_count": 0},
+                    {"source": "certspotter", "status": "completed", "result_count": 1},
+                ] if is_root else [{"source": "certspotter", "status": "completed", "result_count": 1}]}],
+            }, error=warning if is_root else None)
+
+        with (patch.object(orchestrators, "run_theharvester", side_effect=partial),
+              patch.object(orchestrators, "run_spiderfoot", return_value=[]),
+              patch.object(orchestrators, "run_crtsh", return_value=[])):
+            result = (await run_all(
+                "ejemplo.com", OrchestratorSettings(),
+                targets=["api.ejemplo.com", "dev.ejemplo.com", "www.ejemplo.com"],
+            ))["theHarvester"]
+        self.assertEqual([item[0] for item in calls], ["ejemplo.com", "api.ejemplo.com", "dev.ejemplo.com", "www.ejemplo.com"])
+        self.assertIn("hackertarget", calls[0][1])
+        self.assertTrue(all("hackertarget" not in sources for _, sources in calls[1:]))
+        self.assertTrue(all("certspotter" in sources and "rapiddns" in sources and "urlscan" in sources for _, sources in calls))
+        self.assertEqual(result["estado"], "completado")
+        self.assertIn(warning, result["error"])
+        self.assertEqual(len(result["contenido"]["items"]), 1)
+        self.assertEqual(len(result["contenido"]["runs"]), 4)
+        self.assertTrue(all(run["source_executions"][-1]["status"] == "skipped" for run in result["contenido"]["runs"][1:]))
+        self.assertEqual(len(result["consultas"]), 4)
+        self.assertTrue(all(query["metodo"] == "consulta de fuente" for query in result["consultas"]))
+
     async def test_reporte_marca_limite_de_proveedor_como_fallo(self):
         with tempfile.TemporaryDirectory() as directory:
             report = Path(directory) / "report.jsonl"

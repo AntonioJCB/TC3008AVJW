@@ -18,7 +18,7 @@ import { loadClientData, type ClientData, type Risk, type Scan } from './service
 import { createScan, executeScan, getScanProgress, resolveFinding, ScanRequestError, stopScan, type ScanProgress } from './services/scanActions'
 import { liveFindings, liveHistoryScans } from './services/liveAdapters'
 import { exportOverviewToExcel } from './services/exportOverview'
-import { isActiveSource } from './services/sourcePolicy'
+import { isActiveSource, isDisabledSourceResult } from './services/sourcePolicy'
 import './dashboard.css'
 import './typography.css'
 import './clientPortal.css'
@@ -288,11 +288,19 @@ function Summary({ data, latest }: { data: ClientData; latest: Scan | null }) {
   }
   const risk = riskFor(data, latest)
   const potentialRisk = risk?.cobertura?.riesgo_potencial
-  const potentialScore = typeof potentialRisk?.puntaje_global === 'number'
-    && potentialRisk.puntaje_global >= 0 && potentialRisk.puntaje_global <= 100
-    ? potentialRisk.puntaje_global : null
+  const globalRisk = risk?.cobertura?.riesgo_global_estimado
+  const formatScore = (value: number | null | undefined) => value == null ? '—' : value > 0 && value < 0.1 ? '<0.1' : value.toFixed(1)
+  const confirmedRisk = risk?.cobertura?.riesgo_confirmado ?? risk
+  const confirmedScore = confirmedRisk?.puntaje_global
+  const estimatedScore = globalRisk?.puntaje_global
+  const potentialScore = potentialRisk?.puntaje_global ?? null
   const priorityFindings = liveFindings(data).filter((finding) => finding.status !== 'Resuelto')
-  const categories = risk ? [['Infraestructura', risk.infraestructura], ['Identidad digital', risk.identidad_digital], ['Configuración', risk.configuracion], ['Fuga de datos', risk.fuga_de_datos]] as const : []
+  const categories = confirmedRisk ? [
+    ['Infraestructura', confirmedRisk.infraestructura],
+    ['Identidad digital', confirmedRisk.identidad_digital],
+    ['Configuración', confirmedRisk.configuracion],
+    ['Fuga de datos', confirmedRisk.fuga_de_datos],
+  ] as const : []
   const severityLabels = ['crítico', 'alto', 'medio', 'bajo']
   const severityCounts = severityLabels.map((label, index) => ({ label, count: priorityFindings.filter((finding) => finding.severity === (['critical', 'high', 'medium', 'low'] as const)[index]).length }))
   const maxSeverity = Math.max(1, ...severityCounts.map((item) => item.count))
@@ -300,11 +308,13 @@ function Summary({ data, latest }: { data: ClientData; latest: Scan | null }) {
   const maxType = Math.max(1, ...types.map((item) => item.count))
   const sourceResults = new Map(data.sourceResults.map((result) => [result.fuente_id, result]))
   const activeSources = data.sources.filter((source) => isActiveSource(source.nombre))
-  const consulted = activeSources.filter((source) => sourceResults.get(source.id)?.estado === 'completado' && !sourceResults.get(source.id)?.error).length
-  const coverage = activeSources.length ? Math.round(consulted / activeSources.length * 100) : 0
+  const enabledSources = activeSources.filter((source) => !isDisabledSourceResult(sourceResults.get(source.id)))
+  const consulted = enabledSources.filter((source) => sourceResults.get(source.id)?.estado === 'completado' && !sourceResults.get(source.id)?.error).length
+  const coverage = enabledSources.length ? Math.round(consulted / enabledSources.length * 100) : 0
   const sourceState = (sourceId: string) => {
     const result = sourceResults.get(sourceId)
     if (!result) return 'Sin ejecutar'
+    if (isDisabledSourceResult(result)) return 'Deshabilitada · CT no evaluado'
     if (result.estado === 'completado') return result.error ? 'Parcial' : 'Saludable'
     return result.estado === 'fallido' ? 'Fallida' : result.estado
   }
@@ -315,14 +325,16 @@ function Summary({ data, latest }: { data: ClientData; latest: Scan | null }) {
       <section className="content-card proposal-card risk-card">
         <div className="card-heading"><h3>RISK SCORE CONFIRMADO</h3><span>0–100</span></div>
         <div className="risk-card-body">
-          <div className="proposal-score-ring" style={{ background: `conic-gradient(var(--teal) 0 ${risk?.puntaje_global ?? 0}%, var(--theme-track) ${risk?.puntaje_global ?? 0}% 100%)` }} aria-label={risk ? `Risk Score confirmado: ${risk.puntaje_global} de 100` : 'Sin Risk Score confirmado'}><div><strong>{risk?.puntaje_global ?? '—'}</strong><span>{risk?.es_parcial ? 'PARCIAL' : risk ? 'CONFIRMADO' : 'SIN DATOS'}</span></div></div>
-          <div className="risk-breakdown">{risk ? categories.map(([label, value]) => <div className="factor-row" key={label}><span className="factor-dot" /><span>{label}</span><strong>{value}</strong></div>) : <p className="client-empty">El puntaje aparecerá al terminar un análisis.</p>}</div>
+          <div className="proposal-score-ring" style={{ background: `conic-gradient(var(--teal) 0 ${confirmedScore ?? 0}%, var(--theme-track) ${confirmedScore ?? 0}% 100%)` }} aria-label={risk ? `Risk Score confirmado: ${formatScore(confirmedScore)} de 100` : 'Sin Risk Score confirmado'}><div><strong>{formatScore(confirmedScore)}</strong><span>{risk?.es_parcial ? 'PARCIAL' : risk ? 'CONFIRMADO' : 'SIN DATOS'}</span></div></div>
+          <div className="risk-breakdown">{risk ? categories.map(([label, value]) => <div className="factor-row" key={label}><span className="factor-dot" /><span>{label}</span><strong>{formatScore(value)}</strong></div>) : <p className="client-empty">El puntaje aparecerá al terminar un análisis.</p>}</div>
         </div>
         <div className="potential-risk-summary" aria-label={potentialScore === null ? 'Riesgo potencial no disponible' : `Riesgo potencial estimado: ${potentialScore} de 100`}>
-          <div><span>RIESGO POTENCIAL ESTIMADO</span><strong>{potentialScore ?? '—'}<small>/100</small></strong></div>
+          <div><span>RIESGO POTENCIAL ESTIMADO</span><strong>{formatScore(potentialScore)}<small>/100</small></strong></div>
           <div className="potential-risk-detail"><span>{potentialRisk ? `${potentialRisk.reglas_activas.hallazgos} de reglas activas · ${potentialRisk.reglas_inactivas.hallazgos} de inactivas` : 'No disponible en la cobertura de este análisis'}</span><div><i style={{ width: `${potentialScore ?? 0}%` }} /></div></div>
         </div>
-        {risk && <p className="calculation-note">El Risk Score usa solo hallazgos confirmados de reglas activas. El indicador potencial es independiente y no modifica ese puntaje.{risk.es_parcial && ` El resultado tiene limitaciones de fuentes o cobertura. Revisa el reporte.`}</p>}
+        <div className="potential-risk-summary"><div><span>RIESGO GLOBAL ESTIMADO</span><strong>{formatScore(estimatedScore)}<small>/100</small></strong></div><div className="potential-risk-detail"><span>{globalRisk ? `Confirmados: ${globalRisk.ponderacion_confirmada * 100} % · potenciales: ${globalRisk.ponderacion_potencial * 100} % · ${globalRisk.contribuciones.length} contribuciones` : 'No disponible para este análisis'}</span></div></div>
+        {globalRisk && <details className="calculation-note"><summary>Ver contribuciones del global</summary>{globalRisk.contribuciones.length ? <ul>{globalRisk.contribuciones.map((item) => <li key={`${item.activo_id}-${item.regla}`}><span>{item.regla} · {item.nivel_evidencia === 'confirmada' ? 'confirmada' : 'potencial'} · {data.assets.find((asset) => asset.id === item.activo_id)?.valor ?? item.activo_id}: {formatScore(item.aporte)} puntos antes de combinar</span></li>)}</ul> : <p>No hay contribuciones puntuables.</p>}</details>}
+        {risk && <p className="calculation-note">El global combina hallazgos confirmados y potenciales ponderados; no es riesgo confirmado. Las reglas aportan según peso, confianza y antigüedad de la evidencia potencial.{risk.es_parcial && ` El resultado tiene limitaciones de fuentes o cobertura. Revisa el reporte.`}</p>}
       </section>
       <section className="content-card proposal-card analysis-summary"><div className="card-heading"><div><h3>RESUMEN DE LA ORGANIZACIÓN</h3><small>{latest ? `Finalizado: ${dateTime(latest.finalizado_en)}` : 'Todavía no hay un análisis terminado.'}</small></div><span className="card-state">{latest?.estado ?? 'Pendiente'}</span></div><div className="summary-numbers"><div><strong>{data.assetCount}</strong><span>Activos en inventario</span></div><div><strong>{data.findingCount}</strong><span>Hallazgos del último análisis</span></div><div><strong>{severityCounts[0].count}</strong><span>Críticos del último análisis</span></div><div><strong>{data.scanCount}</strong><span>Análisis</span></div></div><div className="summary-highlights"><div><strong>{data.findings.filter((item) => item.estado === 'abierto').length}</strong><span>Hallazgos abiertos del último análisis</span></div><div><strong>{data.observations.length}</strong><span>Observaciones del último análisis</span></div><div><strong>{consulted}</strong><span>Fuentes completadas</span></div></div></section>
     </div>
@@ -332,7 +344,7 @@ function Summary({ data, latest }: { data: ClientData; latest: Scan | null }) {
       <section className="content-card proposal-card severity-card"><div className="card-heading"><h3>HALLAZGOS POR SEVERIDAD</h3><Link to="/home/hallazgos">Ver todos</Link></div><div className="severity-bars">{severityCounts.map(({ label, count }) => <div className="severity-bar-row" key={label}><span>{label}</span><div className="bar-track"><i className={`tone-${label === 'crítico' ? 'critical' : label === 'alto' ? 'high' : label === 'medio' ? 'medium' : 'low'}`} style={{ width: `${count / maxSeverity * 100}%` }} /></div><strong>{count}</strong></div>)}</div></section>
     </div>
     <section className="content-card proposal-card priorities-card"><div className="card-heading"><h3>HALLAZGOS PRIORITARIOS</h3><Link to="/home/hallazgos">Ver todos los hallazgos</Link></div>{priorityFindings.length ? <div className="priority-table-wrap"><table className="priority-table"><thead><tr><th>SEVERIDAD</th><th>HALLAZGO</th><th>ACTIVO</th><th>CONFIANZA</th><th /></tr></thead><tbody>{priorityFindings.slice(0, 5).map((finding) => <tr key={finding.id}><td><span className={`priority-severity ${finding.severity === 'critical' ? 'critical' : 'high'}`}>{finding.severity === 'critical' ? 'CRÍTICA' : finding.severity === 'high' ? 'ALTA' : finding.severity === 'medium' ? 'MEDIA' : 'BAJA'}</span></td><td><strong>{finding.title}</strong><small className={`priority-evidence ${finding.evidenceLevel ?? 'sin_clasificar'}`}>{finding.evidenceLevel === 'confirmada' ? 'Confirmada' : finding.evidenceLevel === 'potencial' ? 'Potencial' : 'Sin clasificar'}</small></td><td>{finding.asset}</td><td>{finding.confidence}%</td><td><Link to="/home/hallazgos">Ver</Link></td></tr>)}</tbody></table></div> : <Empty>No hay hallazgos registrados.</Empty>}</section>
-    <div className="overview-bottom-grid"><section className="content-card proposal-card inventory-card"><div className="card-heading"><h3>INVENTARIO DE ACTIVOS</h3><Link to="/home/activos">Explorar activos</Link></div>{types.length ? <div className="inventory-bars">{types.map(({ label, count }) => <div className="inventory-bar-row" key={label}><span>{label}</span><strong>{count}</strong><div className="bar-track"><i className="tone-info" style={{ width: `${count / maxType * 100}%` }} /></div></div>)}</div> : <Empty>Aún no hay activos descubiertos.</Empty>}</section><section className="content-card proposal-card sources-card"><div className="card-heading"><h3>SALUD DE FUENTES</h3><Link to="/home/fuentes">Detalles</Link></div><div className="source-health-list">{activeSources.map((source) => <div className={`source-health-row${sourceResults.get(source.id)?.estado === 'fallido' ? ' error' : ''}`} key={source.id}><span className="source-status-dot" /><strong>{source.nombre}</strong><em>{sourceState(source.id)}</em></div>)}</div><div className="sources-foot"><span>Fuentes saludables</span><strong>{coverage}%</strong></div><div className="source-progress" role="img" aria-label={`Fuentes saludables: ${coverage}%`}><i style={{ width: `${coverage}%` }} /></div></section></div>
+    <div className="overview-bottom-grid"><section className="content-card proposal-card inventory-card"><div className="card-heading"><h3>INVENTARIO DE ACTIVOS</h3><Link to="/home/activos">Explorar activos</Link></div>{types.length ? <div className="inventory-bars">{types.map(({ label, count }) => <div className="inventory-bar-row" key={label}><span>{label}</span><strong>{count}</strong><div className="bar-track"><i className="tone-info" style={{ width: `${count / maxType * 100}%` }} /></div></div>)}</div> : <Empty>Aún no hay activos descubiertos.</Empty>}</section><section className="content-card proposal-card sources-card"><div className="card-heading"><h3>SALUD DE FUENTES</h3><Link to="/home/fuentes">Detalles</Link></div><div className="source-health-list">{activeSources.map((source) => { const result = sourceResults.get(source.id); const disabled = isDisabledSourceResult(result); return <div className={`source-health-row${result?.estado === 'fallido' ? ' error' : disabled ? ' disabled' : ''}`} key={source.id}><span className="source-status-dot" /><strong>{source.nombre}</strong><em>{sourceState(source.id)}</em></div> })}</div><div className="sources-foot"><span>Fuentes habilitadas saludables</span><strong>{coverage}%</strong></div><div className="source-progress" role="img" aria-label={`Fuentes habilitadas saludables: ${coverage}%`}><i style={{ width: `${coverage}%` }} /></div></section></div>
     <section className="content-card proposal-card changes-card"><div className="card-heading"><h3>ACTIVIDAD RECIENTE</h3><Link to="/home/historial">Abrir historial</Link></div>{data.scans.length ? <div className="milestone-grid">{data.scans.slice(0, 4).map((scan) => <div className="milestone" key={scan.id}><span className="milestone-ring tone-info" /><div><strong>Análisis {scan.estado}</strong><p>{dateTime(scan.finalizado_en ?? scan.iniciado_en)}</p><small>{riskFor(data, scan)?.puntaje_global ?? '—'} puntos de riesgo</small></div></div>)}</div> : <Empty>Todavía no hay análisis registrados.</Empty>}</section>
     <div className="overview-export">
       <button type="button" className="overview-export-button" onClick={() => void exportExcel()} disabled={exporting}>

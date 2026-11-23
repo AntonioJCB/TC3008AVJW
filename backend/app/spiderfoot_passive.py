@@ -50,6 +50,10 @@ def selected_modules(target, configured=DEFAULT_MODULES):
         COMMONCRAWL_DEFAULT_MODULES, COMMONCRAWL_RDAP_DEFAULT_MODULES,
     } else configured
     names = [name.strip() for name in preset.split(",") if name.strip()]
+    # Mientras el CDX público siga inestable, Common Crawl solo puede ejecutarse
+    # de forma aislada para pruebas controladas, nunca dentro del perfil normal.
+    if len(names) > 1:
+        names = [name for name in names if name != "sfp_baxter_commoncrawl"]
     allowed = {*MODULES, *PASSIVE_DNS_MODULES}
     if not names or any(name not in allowed for name in names):
         raise ValueError("SPIDERFOOT_MODULES debe contener únicamente módulos Baxter pasivos revisados")
@@ -384,7 +388,7 @@ def _issue(code, message, *, evaluable=False, severity="informativa", rule=None)
             "evaluable": evaluable, "rule": rule}
 
 
-def _dns_query(fetch, report, check_id, rrtype, name):
+def _dns_query(fetch, report, check_id, rrtype, name, *, skip_reason=None):
     url = "https://dns.google/resolve"
     params = {"name": name, "type": rrtype, "do": "1", "cd": "0", "edns_client_subnet": "0.0.0.0/0"}
     query = url + "?" + urlencode(params)
@@ -392,13 +396,21 @@ def _dns_query(fetch, report, check_id, rrtype, name):
              "records": [], "dnssec_validated": None, "rcode": None,
              "checked_at": report["checked_at"], "query": query, "interpretation": "",
              "issues": []}
+    if skip_reason:
+        check["error_type"] = "provider_circuit_open"
+        check["interpretation"] = (
+            "Consulta omitida después de fallos consecutivos del proveedor: " + skip_reason
+        )
+        return check
     try:
         code, data = fetch(url, params)
         check["http_status"] = code
         if code != 200:
+            check["error_type"] = f"http_{code}"
             check["interpretation"] = f"Google Public DNS respondió HTTP {code}; el registro no pudo verificarse."
             return check
         if not isinstance(data, dict) or type(data.get("Status")) is not int:
+            check["error_type"] = "invalid_response"
             check["interpretation"] = "La respuesta DNS no tuvo el formato esperado; el registro no pudo verificarse."
             return check
         check["rcode"] = data["Status"]
@@ -422,7 +434,8 @@ def _dns_query(fetch, report, check_id, rrtype, name):
         check["state"] = "present" if check["records"] else "absent"
         check["interpretation"] = (f"Se encontraron {len(check['records'])} registros {rrtype} exactos."
                                    if check["records"] else f"La consulta fue concluyente y no devolvió registros {rrtype} exactos.")
-    except Exception:
+    except Exception as error:
+        check["error_type"] = error.__class__.__name__
         check["interpretation"] = "No fue posible consultar o validar este registro mediante Google Public DNS."
     return check
 
@@ -594,9 +607,20 @@ def _dns_doh(fetch, report):
     if not re.fullmatch(r"(?=.{1,253}$)(?:[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", target):
         raise ValueError("Nombre de dominio inválido")
     checks = []
+    consecutive_provider_failures = 0
     for check_id, rrtype, prefix in DNS_QUERIES:
         name = target if prefix == "target" else f"{prefix}.{target}"
-        checks.append(_dns_query(fetch, report, check_id, rrtype, name))
+        skip_reason = (
+            "se alcanzó el límite de dos fallos consecutivos"
+            if consecutive_provider_failures >= 2 else None
+        )
+        check = _dns_query(fetch, report, check_id, rrtype, name, skip_reason=skip_reason)
+        checks.append(check)
+        if skip_reason:
+            continue
+        consecutive_provider_failures = (
+            consecutive_provider_failures + 1 if check["state"] == "error" else 0
+        )
     _dns_interpret(checks, target)
     _dns_assess_cname_target(fetch, report, checks)
     report["checks"] = checks
@@ -616,7 +640,12 @@ def _dns_doh(fetch, report):
     failed = sum(check["state"] == "error" for check in checks if check["check"] not in {"spf", "dnssec", "dkim"})
     queried = len(DNS_QUERIES)
     if failed == queried:
-        report.update(status="error", error="Fallaron todas las consultas DNS DoH; el activo no fue evaluado")
+        error_types = sorted({str(check.get("error_type")) for check in checks
+                              if check.get("error_type") and check.get("error_type") != "provider_circuit_open"})
+        detail = f" ({', '.join(error_types)})" if error_types else ""
+        report.update(status="error", error=(
+            "Fallaron todas las consultas DNS DoH; el activo no fue evaluado" + detail
+        ))
     elif failed:
         report.update(status="partial", error=f"{failed} de {queried} consultas DNS no pudieron verificarse")
     else:

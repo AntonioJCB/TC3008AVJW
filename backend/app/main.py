@@ -44,6 +44,11 @@ from app.scan_service import (  # noqa: F401  (se re-exportan los helpers con su
     scan_message,
 )
 from app.settings import Settings, get_settings  # noqa: F401
+from app.source_policy import (
+    CRTSH_DISABLED_REASON,
+    DISABLED_SOURCE_STATE,
+    is_disabled_source_result,
+)
 
 logger = logging.getLogger(__name__)
 _risk_recovery_lock = asyncio.Lock()
@@ -100,6 +105,7 @@ class ScanStatus(BaseModel):
     dominio: str | None = None
     fuentes_ok: list[str] = Field(default_factory=list)
     fuentes_fallidas: list[str] = Field(default_factory=list)
+    fuentes_deshabilitadas: list[str] = Field(default_factory=list)
     iniciado_en: str | None = None
     finalizado_en: str | None = None
     riesgo: RiskSummary | None = None
@@ -492,6 +498,9 @@ def _source_results(client: Client, scan_id: str) -> dict[str, dict[str, Any]]:
             )
             if row.get(key) is not None
         }
+        current = results[row["fuentes_osint"]["nombre"]]
+        if is_disabled_source_result(current.get("estado"), current.get("error")):
+            current["estado"] = DISABLED_SOURCE_STATE
     for name in SOURCE_NAMES:
         results.setdefault(name, dict(_PENDIENTE))
     return results
@@ -510,7 +519,10 @@ def _status_response(
         fuentes=[SourceStatus(fuente=name, **results[name]) for name in SOURCE_NAMES],
         mensaje=scan_message(scan_state, results),
         fuentes_ok=[n for n in SOURCE_NAMES if results[n].get("estado") == "completado" and not results[n].get("error")],
-        fuentes_fallidas=[n for n in SOURCE_NAMES if results[n].get("estado") == "fallido" or results[n].get("error")],
+        fuentes_fallidas=[n for n in SOURCE_NAMES if results[n].get("estado") == "fallido" or (
+            results[n].get("error") and results[n].get("estado") != DISABLED_SOURCE_STATE
+        )],
+        fuentes_deshabilitadas=[n for n in SOURCE_NAMES if results[n].get("estado") == DISABLED_SOURCE_STATE],
         **extra,
     )
 
@@ -746,6 +758,8 @@ async def execute_scan(
         run_scan_job, client, settings, scan, source_ids, domain, runners, targets, ip_scope, excluded_targets,
     )
     running = {name: {"estado": "ejecutando"} for name in SOURCE_NAMES}
+    if not getattr(settings, "crtsh_enabled", True):
+        running["crt.sh"] = {"estado": DISABLED_SOURCE_STATE, "error": CRTSH_DISABLED_REASON}
     return _status_response(
         scan_id_text, "ejecutando", running, dominio=domain,
         iniciado_en=datetime.now(timezone.utc).isoformat(),

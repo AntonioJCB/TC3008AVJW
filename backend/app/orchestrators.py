@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import logging
 import shutil
+import socket
 import tempfile
 import uuid
 from dataclasses import dataclass, field
@@ -19,7 +21,9 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class OrchestratorSettings:
-    shodan_api_key: str | None = None
+    censys_pat: str | None = None
+    censys_organization_id: str | None = None
+    censys_authorized_ips: str = ""
     theharvester_bin: str = "theHarvester"
     theharvester_sources: str = "certspotter,hackertarget"
     spiderfoot_url: str = "http://127.0.0.1:5001"
@@ -29,8 +33,8 @@ class OrchestratorSettings:
     spiderfoot_timeout_seconds: float = 1800
     spiderfoot_poll_seconds: float = 3
     crtsh_retries: int = 4
-    shodan_max_ips: int = 10
-    shodan_pause_seconds: float = 1.1
+    censys_max_ips: int = 10
+    censys_pause_seconds: float = 1.1
     crtsh_timeout_seconds: float = 60
 
 
@@ -78,7 +82,7 @@ async def run_all(
     """
     selected_runners = runners or {
         "crt.sh": lambda target: run_crtsh(target, settings),
-        "Shodan": lambda target: run_shodan(target, settings),
+        "Censys": lambda target: run_censys(target, settings),
         "theHarvester": lambda target: run_theharvester(target, settings),
         "SpiderFoot": lambda target: run_spiderfoot(target, settings),
     }
@@ -144,58 +148,84 @@ async def run_crtsh(domain: str, settings: OrchestratorSettings) -> list[dict[st
     return payload
 
 
-async def _shodan_get(
-    client: httpx.AsyncClient, path: str, params: dict[str, str], settings: OrchestratorSettings
-) -> Any:
-    """GET a la API de Shodan. 404 = Shodan no tiene datos de ese recurso."""
-    response = await client.get(
-        f"https://api.shodan.io{path}", params={**params, "key": settings.shodan_api_key}
-    )
-    if response.status_code == 404:
-        return None
-    if response.status_code == 403:
-        try:
-            reason = response.json().get("error", "")
-        except (ValueError, AttributeError):
-            reason = ""
-        if isinstance(reason, str) and "membership" in reason.lower():
-            raise RuntimeError(
-                "El plan de Shodan requiere Membership o superior para consultar DNS y hosts"
-            )
-    response.raise_for_status()  # el mensaje de error nunca incluye la URL con la llave
-    return response.json()
+async def _resolve_censys_ips(domain: str) -> list[str]:
+    """DNS del sistema: no requiere créditos ni acceso al buscador Censys."""
+    try:
+        records = await asyncio.get_running_loop().getaddrinfo(domain, None, type=socket.SOCK_STREAM)
+    except socket.gaierror as error:
+        raise RuntimeError("Censys: no se pudo resolver el dominio por DNS público") from error
+    return sorted({str(ipaddress.ip_address(row[4][0])) for row in records
+                   if ipaddress.ip_address(row[4][0]).is_global})
 
 
-async def run_shodan(domain: str, settings: OrchestratorSettings) -> RunnerOutput:
-    """Puertos y servicios de las IPs del dominio.
+def _censys_authorized_ips(value: str, domain: str) -> set[str]:
+    try:
+        scopes = json.loads(value) if value.strip() else {}
+        if not isinstance(scopes, dict):
+            raise ValueError
+        for name, ips in scopes.items():
+            if not isinstance(name, str) or not isinstance(ips, list) or not all(isinstance(ip, str) for ip in ips):
+                raise ValueError
+            # Validar toda la configuración sin incluir sus valores en errores.
+            for ip in ips:
+                ipaddress.ip_address(ip)
+        return {str(ipaddress.ip_address(ip)) for ip in scopes.get(domain, [])}
+    except (ValueError, TypeError) as error:
+        raise ValueError("CENSYS_AUTHORIZED_IPS debe ser JSON: dominio canónico -> lista de IPs literales") from error
 
-    Usa /dns/resolve y /shodan/host/{ip}. No usa /shodan/host/search con el
-    filtro `hostname:` porque las búsquedas con filtros exigen un plan de pago.
-    Shodan limita a ~1 petición por segundo.
+
+async def run_censys(domain: str, settings: OrchestratorSettings) -> RunnerOutput:
+    """Lookup Platform v3, disponible para Free según permisos/créditos.
+
+    Guarda respuestas originales. DNS relaciona un host; solo la lista explícita
+    del servidor autoriza atribuir servicios de esa IP al cliente.
     """
-    if not settings.shodan_api_key:
-        raise RuntimeError("Falta configurar SHODAN_API_KEY")
-
+    if not settings.censys_pat:
+        raise RuntimeError("Falta configurar CENSYS_PAT (Personal Access Token de Censys Platform)")
+    if settings.censys_max_ips < 1 or settings.censys_pause_seconds < 0:
+        raise ValueError("CENSYS_MAX_IPS debe ser positivo y CENSYS_PAUSE_SECONDS no negativo")
+    allowed = _censys_authorized_ips(settings.censys_authorized_ips, domain)
+    ips = await asyncio.wait_for(_resolve_censys_ips(domain), settings.request_timeout_seconds)
+    if not ips:
+        raise RuntimeError("Censys: el dominio no tiene IPs públicas consultables")
+    if len(ips) > settings.censys_max_ips:
+        raise RuntimeError("Censys: las IPs del dominio exceden CENSYS_MAX_IPS; revisa el límite y tus créditos")
+    headers = {"Authorization": f"Bearer {settings.censys_pat}",
+               "Accept": "application/vnd.censys.api.v3.host.v1+json"}
+    params = {"organization_id": settings.censys_organization_id} if settings.censys_organization_id else {}
+    hosts: list[Any] = []
     async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
-        resolved = await _shodan_get(client, "/dns/resolve", {"hostnames": domain}, settings)
-        if resolved is not None and not isinstance(resolved, dict):
-            raise ValueError("Shodan devolvió un formato inesperado en /dns/resolve")
-
-        ips: list[str] = []
-        for value in (resolved or {}).values():
-            ip = normalizar_ip(value) if isinstance(value, str) else None
-            if ip and ip not in ips:
-                ips.append(ip)
-        ips = ips[: max(0, settings.shodan_max_ips)]
-
-        hosts: list[Any] = []
         for index, ip in enumerate(ips):
             if index:
-                await _sleep(settings.shodan_pause_seconds)
-            host = await _shodan_get(client, f"/shodan/host/{ip}", {}, settings)
-            if host is not None:
-                hosts.append(host)
-    return RunnerOutput(hosts, tuple(ips))
+                await _sleep(settings.censys_pause_seconds)
+            response = await client.get(f"https://api.platform.censys.io/v3/global/asset/host/{ip}",
+                                        headers=headers, params=params)
+            if response.status_code == 404:
+                continue  # API respondió: no tiene un registro para esta IP.
+            errors = {
+                401: "Censys HTTP 401: CENSYS_PAT no es válido o ha expirado",
+                402: "Censys HTTP 402: revisa los créditos disponibles de la cuenta",
+                403: "Censys HTTP 403: la cuenta u organización no tiene acceso al lookup de hosts",
+                429: "Censys HTTP 429: límite de peticiones o concurrencia; espera y revisa tu cuota",
+            }
+            if response.status_code in errors:
+                raise RuntimeError(errors[response.status_code])
+            response.raise_for_status()
+            try:
+                payload = response.json()
+                host = payload["result"]["resource"]
+                if not isinstance(host, dict) or normalizar_ip(str(host.get("ip", ""))) != ip:
+                    raise ValueError
+                if host.get("truncated") or (host.get("services") is not None and not isinstance(host["services"], list)):
+                    raise ValueError
+                count = host.get("service_count")
+                if isinstance(count, int) and count > len(host.get("services") or []):
+                    raise ValueError
+            except (ValueError, KeyError, TypeError) as error:
+                raise ValueError("Censys devolvió un host incompleto o un formato Platform v3 inesperado") from error
+            hosts.append(payload)
+    return RunnerOutput({"hosts": hosts, "dns": {"dominio": domain, "ips": ips}},
+                        tuple(ip for ip in ips if ip in allowed))
 
 
 async def run_theharvester(domain: str, settings: OrchestratorSettings) -> Any:

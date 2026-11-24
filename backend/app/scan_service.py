@@ -31,7 +31,7 @@ from app.settings import Settings
 
 logger = logging.getLogger(__name__)
 
-SOURCE_NAMES = ("crt.sh", "Shodan", "theHarvester", "SpiderFoot")
+SOURCE_NAMES = ("crt.sh", "Censys", "theHarvester", "SpiderFoot")
 
 PENDIENTE = "pendiente"
 EJECUTANDO = "ejecutando"
@@ -148,7 +148,9 @@ def scan_message(scan_state: str, results: Mapping[str, Mapping[str, Any]]) -> s
 
 def orchestrator_settings(settings: Settings) -> OrchestratorSettings:
     return OrchestratorSettings(
-        shodan_api_key=settings.shodan_api_key,
+        censys_pat=settings.censys_pat,
+        censys_organization_id=getattr(settings, "censys_organization_id", None),
+        censys_authorized_ips=getattr(settings, "censys_authorized_ips", ""),
         theharvester_bin=settings.theharvester_bin,
         theharvester_sources=settings.theharvester_sources,
         spiderfoot_url=settings.spiderfoot_url,
@@ -158,8 +160,8 @@ def orchestrator_settings(settings: Settings) -> OrchestratorSettings:
         spiderfoot_timeout_seconds=settings.spiderfoot_timeout_seconds,
         spiderfoot_poll_seconds=settings.spiderfoot_poll_seconds,
         crtsh_retries=settings.crtsh_retries,
-        shodan_max_ips=settings.shodan_max_ips,
-        shodan_pause_seconds=settings.shodan_pause_seconds,
+        censys_max_ips=settings.censys_max_ips,
+        censys_pause_seconds=settings.censys_pause_seconds,
         crtsh_timeout_seconds=settings.crtsh_timeout_seconds,
     )
 

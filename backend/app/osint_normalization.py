@@ -550,9 +550,67 @@ def _adapt_spiderfoot(raw: Any, domain: str) -> dict[str, Any]:
     return result
 
 
+def _adapt_censys(raw: Any, domain: str, in_scope_ips: list[str]) -> dict[str, Any]:
+    """Platform v3: hosts[].result.resource. Nunca atribuye servicios solo por DNS."""
+    result = _new_result()
+    if not isinstance(raw, dict) or not isinstance(raw.get("hosts"), list):
+        return _format_error(result, "un objeto Censys con hosts[]", raw)
+    allowed = {ip for value in in_scope_ips if (ip := normalizar_ip(value))}
+    dns = raw.get("dns") if isinstance(raw.get("dns"), dict) else {}
+    resolved = {ip for value in _list(dns.get("ips")) if isinstance(value, str) and (ip := normalizar_ip(value))}
+    if dns.get("dominio") == domain:
+        for ip in sorted(resolved):
+            _add_name(result, domain, domain, [{"atributo": "resuelve_a", "datos": {"ip": ip, "metodo": "dns_local"}}])
+            _add_ip(result, ip, [{"atributo": "descubierto", "datos": {"metodo": "dns_local"}}])
+    for payload in raw["hosts"]:
+        resource = payload.get("result", {}).get("resource") if isinstance(payload, dict) and isinstance(payload.get("result"), dict) else None
+        if not isinstance(resource, dict):
+            _format_error(result, "result.resource de Censys", payload)
+            continue
+        ip = normalizar_ip(str(resource.get("ip", "")))
+        # La correlación de DNS permite inventario, no autoriza la infraestructura.
+        if not ip or ip not in resolved:
+            _discard(result, "fuera_de_alcance", resource.get("ip"))
+            continue
+        if ip not in allowed:
+            if resource.get("services"):
+                _discard(result, "servicios_sin_ip_autorizada", ip)
+            continue
+        for service in _list(resource.get("services")):
+            if not isinstance(service, dict):
+                _format_error(result, "un servicio Censys", service)
+                continue
+            protocol = str(service.get("transport_protocol", "")).lower()
+            if protocol not in {"tcp", "udp"}:
+                _discard(result, "protocolo_no_soportado", protocol)
+                continue
+            port = service.get("port")
+            if not isinstance(port, int) or isinstance(port, bool):
+                _discard(result, "valor_invalido", port)
+                continue
+            observed_at = fecha_iso(service.get("scan_time"))
+            value = _add_service(result, ip, port, protocol, [{
+                "atributo": "servicio_expuesto", "observado_en": observed_at,
+                "datos": {"protocolo_aplicacion": service.get("protocol"),
+                          "software": _list(service.get("software")), "atribucion": "ip_autorizada_en_servidor"},
+            }])
+            if not value:
+                continue
+            for vuln in _list(service.get("vulns")):
+                cve = vuln.get("id") if isinstance(vuln, dict) else None
+                if isinstance(cve, str) and re.fullmatch(r"CVE-\d{4}-\d{4,}", cve, flags=re.I):
+                    _observation(result, "servicio", value, "cve", {
+                        "cve": cve.upper(), "verificado": None,
+                        "severidad_fuente": vuln.get("severity"),
+                        "confianza_fuente": vuln.get("confidence"),
+                    }, observed_at)
+    return result
+
+
 ADAPTERS = {
     "crt.sh": _adapt_crtsh,
     "Shodan": _adapt_shodan,
+    "Censys": _adapt_censys,
     "theHarvester": _adapt_harvester,
     "SpiderFoot": _adapt_spiderfoot,
 }
@@ -569,8 +627,8 @@ def adaptar(
     canonical_domain = normalizar_dominio(domain)
     if canonical_domain is None:
         raise ValueError("Dominio principal inválido")
-    if source == "Shodan":
-        result = _adapt_shodan(raw, canonical_domain[0], in_scope_ips or [])
+    if source in {"Shodan", "Censys"}:
+        result = ADAPTERS[source](raw, canonical_domain[0], in_scope_ips or [])
     else:
         result = ADAPTERS[source](raw, canonical_domain[0])
     return {

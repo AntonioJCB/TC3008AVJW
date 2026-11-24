@@ -27,10 +27,10 @@ from app.risk.reglas import DEFINICIONES
 
 log = logging.getLogger(__name__)
 
-VERSION_MOTOR = "1.1.0"
+VERSION_MOTOR = "1.1.1"
 CATEGORIAS = ("infraestructura", "identidad_digital", "configuracion", "fuga_de_datos")
 #: Qué fuente se registra como "principal" en hallazgos.fuente_id cuando varias coinciden.
-PRIORIDAD_FUENTE = ("Shodan", "crt.sh", "SpiderFoot", "theHarvester")
+PRIORIDAD_FUENTE = ("Censys", "Shodan", "crt.sh", "SpiderFoot", "theHarvester")
 BONO_POR_FUENTE_ADICIONAL = 0.15
 FACTOR_CONFIANZA = (0.6, 0.4)  # aporte = peso * (0.6 + 0.4 * confianza)
 

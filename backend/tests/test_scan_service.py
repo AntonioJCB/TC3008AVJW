@@ -10,7 +10,7 @@ from app import scan_service
 from app.scan_service import SOURCE_NAMES, _execute, compute_scan_state, run_scan_job, scan_message
 
 OK = {"estado": "completado"}
-KO = {"estado": "fallido", "error": "HTTP 403 from api.shodan.io"}
+KO = {"estado": "fallido", "error": "HTTP 403 from api.platform.censys.io"}
 
 
 def resultados(**estados):
@@ -22,7 +22,7 @@ class EstadoDelEscaneoTests(unittest.TestCase):
         self.assertEqual(compute_scan_state({n: OK for n in SOURCE_NAMES}), "completado")
 
     def test_una_falla_es_incompleto(self):
-        self.assertEqual(compute_scan_state({**{n: OK for n in SOURCE_NAMES}, "Shodan": KO}), "incompleto")
+        self.assertEqual(compute_scan_state({**{n: OK for n in SOURCE_NAMES}, "Censys": KO}), "incompleto")
 
     def test_tres_fallan_sigue_siendo_incompleto(self):
         r = {n: KO for n in SOURCE_NAMES}
@@ -39,19 +39,19 @@ class EstadoDelEscaneoTests(unittest.TestCase):
 
 class MensajesTests(unittest.TestCase):
     def test_incompleto_dice_cual_fallo_y_cuales_no(self):
-        r = {**{n: OK for n in SOURCE_NAMES}, "Shodan": KO}
+        r = {**{n: OK for n in SOURCE_NAMES}, "Censys": KO}
         mensaje = scan_message("incompleto", r)
-        self.assertIn("Fallaron: Shodan (HTTP 403 from api.shodan.io)", mensaje)
+        self.assertIn("Fallaron: Censys (HTTP 403 from api.platform.censys.io)", mensaje)
         self.assertIn("Terminaron correctamente: crt.sh, theHarvester, SpiderFoot", mensaje)
 
     def test_completado_en_curso_y_pendiente(self):
         self.assertIn("4 fuentes terminaron correctamente", scan_message("completado", {n: OK for n in SOURCE_NAMES}))
-        self.assertIn("2 de 4", scan_message("ejecutando", {"crt.sh": OK, "Shodan": KO, "SpiderFoot": {"estado": "ejecutando"}}))
+        self.assertIn("2 de 4", scan_message("ejecutando", {"crt.sh": OK, "Censys": KO, "SpiderFoot": {"estado": "ejecutando"}}))
         self.assertIn("pendiente", scan_message("pendiente", {}))
 
     def test_un_error_largo_se_recorta(self):
         r = {n: KO for n in SOURCE_NAMES}
-        r["Shodan"] = {"estado": "fallido", "error": "x" * 900}
+        r["Censys"] = {"estado": "fallido", "error": "x" * 900}
         self.assertLess(len(scan_message("fallido", r)), 900)
 
 
@@ -79,10 +79,10 @@ class ExecuteTests(unittest.TestCase):
 
 class RunScanJobTests(unittest.IsolatedAsyncioTestCase):
     SETTINGS = SimpleNamespace(
-        shodan_api_key=None, theharvester_bin="x", theharvester_sources="x", spiderfoot_url="http://x",
+        censys_pat=None, theharvester_bin="x", theharvester_sources="x", spiderfoot_url="http://x",
         spiderfoot_modules="sfp_dnsresolve,sfp_dnsraw,sfp_robtex,sfp_crobat_api",
         request_timeout_seconds=1, process_timeout_seconds=1, spiderfoot_timeout_seconds=1, spiderfoot_poll_seconds=1,
-        scan_timeout_seconds=5, crtsh_retries=1, crtsh_timeout_seconds=60, shodan_max_ips=1, shodan_pause_seconds=0,
+        scan_timeout_seconds=5, crtsh_retries=1, crtsh_timeout_seconds=60, censys_max_ips=1, censys_pause_seconds=0,
     )
     SCAN = {"id": "scan-1", "organizacion_id": "org-1"}
     IDS = {n: f"id-{n}" for n in SOURCE_NAMES}
@@ -120,13 +120,13 @@ class RunScanJobTests(unittest.IsolatedAsyncioTestCase):
         riesgo.assert_called_once()
 
     async def test_una_falla_las_otras_se_guardan_y_queda_incompleto(self):
-        estado, persist, finish, riesgo = await self.correr({**{n: "ok" for n in SOURCE_NAMES}, "Shodan": "ko"})
+        estado, persist, finish, riesgo = await self.correr({**{n: "ok" for n in SOURCE_NAMES}, "Censys": "ko"})
         self.assertEqual(estado, "incompleto")
         self.assertEqual(persist.call_count, 4)  # también se registra la que falló
         self.assertEqual(finish.call_args.args[2], "incompleto")
         detalle = self.auditoria.call_args.kwargs["detail"]
         self.assertEqual(self.auditoria.call_args.kwargs["action"], "escaneo_finalizado")
-        self.assertEqual(list(detalle["fuentes_fallidas"]), ["Shodan"])
+        self.assertEqual(list(detalle["fuentes_fallidas"]), ["Censys"])
         self.assertEqual(detalle["fuentes_ok"], ["crt.sh", "theHarvester", "SpiderFoot"])
 
     async def test_todas_fallan_es_fallido_pero_igual_se_calcula_el_riesgo_parcial(self):

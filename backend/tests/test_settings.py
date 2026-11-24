@@ -16,17 +16,17 @@ class SettingsTests(unittest.TestCase):
                     Settings.from_environment()
                 self.assertNotIn(key, str(error.exception))
 
-    def test_shodan_placeholder_is_not_treated_as_configured(self) -> None:
+    def test_censys_placeholder_is_not_treated_as_configured(self) -> None:
         with patch.dict(
             os.environ,
             {
                 "SUPABASE_URL": "https://example.supabase.co",
                 "SUPABASE_SERVICE_ROLE_KEY": "server-secret",
-                "SHODAN_API_KEY": "replace-with-shodan-api-key",
+                "CENSYS_PAT": "replace-with-censys-pat",
             },
             clear=True,
         ):
-            self.assertIsNone(Settings.from_environment().shodan_api_key)
+            self.assertIsNone(Settings.from_environment().censys_pat)
 
     def test_service_role_placeholder_is_rejected(self) -> None:
         with patch.dict(

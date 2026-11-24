@@ -31,7 +31,7 @@ no incrementa el score. Los certificados vistos solo en Certificate
 Transparency y los correos públicos producen hallazgos informativos con peso
 0 hasta contar con evidencia verificable. Una CVE que la fuente haya marcado
 explícitamente como no verificada se descarta. El motor guarda la versión
-`1.1.0`; los puntajes históricos no se recalculan automáticamente.
+`1.1.1`; los puntajes históricos no se recalculan automáticamente.
 Las CVE sin un servicio concreto asociado se conservan como observaciones,
 pero tampoco aportan puntaje.
 
@@ -40,7 +40,7 @@ pero tampoco aportan puntaje.
 - `app/main.py`: rutas HTTP, autenticación y comprobación del alcance.
 - `app/settings.py`: configuración de Supabase y de los collectors desde `.env`.
 - `app/scan_service.py`: ciclo de vida del escaneo y persistencia por fuente.
-- `app/orchestrators.py`: ejecución aislada de crt.sh, Shodan, theHarvester y SpiderFoot.
+- `app/orchestrators.py`: ejecución aislada de crt.sh, Censys, theHarvester y SpiderFoot.
 - `app/osint_normalization.py` y `app/ingestion.py`: normalización y guardado de observaciones.
 - `app/risk/`: reglas, cálculo y persistencia del riesgo.
 - `app/api/routes/health.py`: rutas de salud heredadas; la comprobación de PostgreSQL directo usa `app/core/config.py`.
@@ -85,3 +85,7 @@ variables de entorno y pruebas. El trabajo pendiente está en
 Para revisar las fuentes externas, consulta [osint.md](osint.md).
 Para levantar el backend y las herramientas con Docker, sigue
 [docker-osint.md](docker-osint.md).
+
+La sustitución de Shodan por Censys, los requisitos del PAT y el cambio de catálogo
+se documentan en [censys.md](censys.md). Las reglas inactivas no determinan si
+un escaneo termina completado: ese estado depende de las fuentes.

@@ -22,8 +22,6 @@ from app.risk.modelos import Candidato, Obs
 
 # crt.sh lista certificados históricos: estos hallazgos requieren confirmar el
 # certificado servido actualmente antes de aportar puntos al Risk Score.
-VENTANA_EXPIRADO_DIAS = 90
-DIAS_POR_EXPIRAR = 30
 PATRON_CVE = re.compile(r"CVE-\d{4}-\d{4,}", re.IGNORECASE)
 
 PUERTOS_ADMIN_REMOTA = {22: "SSH", 23: "Telnet", 3389: "RDP", 5900: "VNC", 5985: "WinRM", 5986: "WinRM"}
@@ -120,71 +118,15 @@ def _evaluar_cve(observaciones: Sequence[Obs], ahora: datetime) -> list[Candidat
 
 
 # ---------------------------------------------------------------------
-# CONF-001 / CONF-002: certificados TLS de CT corroborados por la fuente Web.
-#
-# Se mira el certificado que vence más tarde para cada nombre: si incluso ese
-# ya venció, no consta uno vigente en esa consulta CT. Eso no prueba el estado
-# servido por el sitio. Estos evaluadores históricos dependen de Web retirada.
+# CONF-001 / CONF-002 permanecen como catálogo histórico de CT sin puntuar.
+# CONF-006 / CONF-007 / CONF-008 consumen evidencia Web activa.
 # ---------------------------------------------------------------------
 
 
-def _vigencia_maxima(grupo: Sequence[Obs]) -> tuple[datetime, Obs] | None:
-    con_fecha = [(f, o) for o in grupo if (f := _fecha(o.datos.get("valido_hasta"))) is not None]
-    return max(con_fecha, key=lambda t: t[0]) if con_fecha else None
-
-
-def _evaluar_cert_expirado(observaciones: Sequence[Obs], ahora: datetime) -> list[Candidato]:
-    candidatos: list[Candidato] = []
-    web = _agrupar(o for o in observaciones if o.fuente == "Web" and o.atributo == "info_host"
-                  and o.datos.get("check") == "tls_invalido" and o.datos.get("verify_code") == 10)
-    for activo_id, grupo in _agrupar(o for o in observaciones if o.atributo == "certificado").items():
-        if activo_id not in web:
-            continue
-        vigencia = _vigencia_maxima(grupo)
-        if vigencia is None:
-            continue
-        hasta, obs = vigencia
-        dias = (ahora - hasta).days
-        if hasta < ahora and dias <= VENTANA_EXPIRADO_DIAS:
-            candidatos.append(
-                Candidato(
-                    activo_id,
-                    [obs, *web[activo_id]],
-                    {
-                        "activo": obs.valor, "vencio_el": hasta.isoformat(), "dias_vencido": dias,
-                        "serie": obs.datos.get("serie"), "emisor": obs.datos.get("emisor"),
-                    },
-                )
-            )
-    return candidatos
-
-
-def _evaluar_cert_por_expirar(observaciones: Sequence[Obs], ahora: datetime) -> list[Candidato]:
-    candidatos: list[Candidato] = []
-    web = _agrupar(o for o in observaciones if o.fuente == "Web" and o.atributo == "info_host"
-                  and o.datos.get("check") == "tls_verificado")
-    for activo_id, grupo in _agrupar(o for o in observaciones if o.atributo == "certificado").items():
-        current = [o for o in web.get(activo_id, [])
-                   if (expiry := _fecha(o.datos.get("valid_until"))) is not None
-                   and ahora <= expiry <= ahora + timedelta(days=DIAS_POR_EXPIRAR)]
-        if not current:
-            continue
-        vigencia = _vigencia_maxima(grupo)
-        if vigencia is None:
-            continue
-        hasta, obs = vigencia
-        if ahora <= hasta <= ahora + timedelta(days=DIAS_POR_EXPIRAR):
-            candidatos.append(
-                Candidato(
-                    activo_id,
-                    [obs, *current],
-                    {
-                        "activo": obs.valor, "vence_el": hasta.isoformat(), "dias_restantes": (hasta - ahora).days,
-                        "serie": obs.datos.get("serie"), "emisor": obs.datos.get("emisor"),
-                    },
-                )
-            )
-    return candidatos
+def _evaluar_tls_invalido(observaciones: Sequence[Obs], ahora: datetime) -> list[Candidato]:
+    return [Candidato(asset_id, group, {"activo": group[0].valor, **group[0].datos})
+            for asset_id, group in _agrupar(o for o in observaciones if o.fuente == "Web"
+                and o.atributo == "info_host" and o.datos.get("comprobacion_activa") is True and o.datos.get("check") == "tls_invalido").items()]
 
 
 # ---------------------------------------------------------------------
@@ -202,7 +144,7 @@ def _evaluar_postura_web(check: str) -> Callable[[Sequence[Obs], datetime], list
         groups = _agrupar(
             o for o in observaciones
             if o.fuente == "Web" and o.tipo in {"dominio", "subdominio"}
-            and o.atributo == "info_host" and o.datos.get("check") == check
+            and o.atributo == "info_host" and o.datos.get("comprobacion_activa") is True and o.datos.get("check") == check
         )
         return [Candidato(asset_id, group, {"activo": group[0].valor, **group[0].datos})
                 for asset_id, group in groups.items()]
@@ -455,17 +397,14 @@ class DefinicionRegla:
 DEFINICIONES: dict[str, DefinicionRegla] = {
     d.codigo: d
     for d in (
-        DefinicionRegla("INFRA-001", ("Shodan", "SpiderFoot"), 0.70, _evaluador_puertos(PUERTOS_ADMIN_REMOTA)),
-        DefinicionRegla("INFRA-002", ("Shodan", "SpiderFoot"), 0.70, _evaluador_puertos(PUERTOS_BASE_DE_DATOS)),
-        DefinicionRegla("INFRA-003", ("Shodan", "SpiderFoot"), 0.50, _evaluar_cve),
-        DefinicionRegla("CONF-001", ("crt.sh",), 0.90, _evaluar_cert_expirado),
-        DefinicionRegla("CONF-002", ("crt.sh",), 0.90, _evaluar_cert_por_expirar),
+        DefinicionRegla("INFRA-001", ("SpiderFoot",), 0.70, _evaluador_puertos(PUERTOS_ADMIN_REMOTA)),
+        DefinicionRegla("INFRA-002", ("SpiderFoot",), 0.70, _evaluador_puertos(PUERTOS_BASE_DE_DATOS)),
+        DefinicionRegla("INFRA-003", ("SpiderFoot",), 0.50, _evaluar_cve),
         DefinicionRegla("CONF-003", ("SpiderFoot",), 0.85, _evaluar_postura_dns),
         DefinicionRegla("CONF-004", ("SpiderFoot",), 0.65, _evaluar_cabeceras_urlscan),
         DefinicionRegla("IDEN-003", ("theHarvester", "SpiderFoot"), 0.80, _evaluar_correos),
-        # CONF-006 intentionally has no evaluator: CT and urlscan expose historical
-        # certificate metadata, not a trustworthy current TLS validation failure.
-        DefinicionRegla("CONF-007", ("SpiderFoot",), 0.65, _evaluar_cert_proximo_urlscan),
-        DefinicionRegla("CONF-008", ("SpiderFoot",), 0.65, _evaluar_http_sin_https_urlscan),
+        DefinicionRegla("CONF-006", ("Web",), 0.90, _evaluar_tls_invalido),
+        DefinicionRegla("CONF-007", ("SpiderFoot", "Web"), 0.65, lambda obs, now: [*_evaluar_cert_proximo_urlscan(obs, now), *_evaluar_postura_web("tls_por_expirar")(obs, now)]),
+        DefinicionRegla("CONF-008", ("SpiderFoot", "Web"), 0.65, lambda obs, now: [*_evaluar_http_sin_https_urlscan(obs, now), *_evaluar_postura_web("http_sin_redireccion")(obs, now)]),
     )
 }

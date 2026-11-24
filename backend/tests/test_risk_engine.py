@@ -15,17 +15,17 @@ CATALOGO = [
     Regla("r-infra1", "INFRA-001", "Administración remota expuesta", "infraestructura", "alta", 20),
     Regla("r-infra2", "INFRA-002", "Base de datos expuesta", "infraestructura", "critica", 30),
     Regla("r-infra3", "INFRA-003", "Vulnerabilidades conocidas", "infraestructura", "media", 10),
-    Regla("r-conf1", "CONF-001", "Certificado expirado", "configuracion", "alta", 15),
-    Regla("r-conf2", "CONF-002", "Certificado por expirar", "configuracion", "media", 8),
+    Regla("r-conf1", "CONF-006", "TLS inválido", "configuracion", "alta", 15),
+    Regla("r-conf2", "CONF-007", "Certificado por expirar", "configuracion", "media", 8),
     Regla("r-iden3", "IDEN-003", "Correos expuestos", "identidad_digital", "baja", 5),
     Regla("r-conf3", "CONF-003", "SPF/DMARC", "configuracion", "media", 10, esta_activa=False),
     Regla("r-fuga1", "FUGA-001", "Secretos en repos", "fuga_de_datos", "critica", 30, esta_activa=False),
 ]
-FUENTE_ID = {"Shodan": "f-shodan", "crt.sh": "f-crt", "SpiderFoot": "f-sf", "theHarvester": "f-th"}
+FUENTE_ID = {"Web": "f-web", "crt.sh": "f-crt", "SpiderFoot": "f-sf", "theHarvester": "f-th"}
 TODAS_OK = {n: "completado" for n in FUENTE_ID}
 
 
-def obs(tipo, valor, atributo, fuente="Shodan", **datos):
+def obs(tipo, valor, atributo, fuente="SpiderFoot", **datos):
     return Obs(f"o{next(_contador)}", f"a-{tipo}-{valor}", tipo, valor, atributo, datos, fuente, FUENTE_ID.get(fuente, "f-web"))
 
 
@@ -161,15 +161,15 @@ class ReglasDePuertosTests(unittest.TestCase):
         ])
         self.assertEqual(codigos(r), ["INFRA-001"])
 
-    def test_corroboracion_sube_la_confianza_y_elige_fuente_principal(self):
+    def test_observaciones_duplicadas_de_una_fuente_no_aumentan_confianza(self):
         r = evaluar([
             obs("servicio", "203.0.113.10:22/tcp", "servicio_expuesto", fuente="SpiderFoot"),
-            obs("servicio", "203.0.113.10:22/tcp", "servicio_expuesto", fuente="Shodan"),
+            obs("servicio", "203.0.113.10:22/tcp", "servicio_expuesto", fuente="SpiderFoot"),
         ])
         h = r.hallazgos[0]
-        self.assertEqual(h.confianza, 0.85)  # 0.70 + 0.15
-        self.assertEqual(h.evidencia["fuentes"], ["Shodan", "SpiderFoot"])
-        self.assertEqual(h.fuente_id, "f-shodan")  # Shodan tiene prioridad
+        self.assertEqual(h.confianza, 0.70)
+        self.assertEqual(h.evidencia["fuentes"], ["SpiderFoot"])
+        self.assertEqual(h.fuente_id, "f-sf")
 
 
 class CveTests(unittest.TestCase):
@@ -182,7 +182,7 @@ class CveTests(unittest.TestCase):
         self.assertEqual(codigos(r), ["INFRA-003", "INFRA-003"])
         por_activo = {h.evidencia["detalle"]["activo"]: h for h in r.hallazgos}
         self.assertEqual(por_activo["203.0.113.10:22/tcp"].evidencia["detalle"]["cves"], ["CVE-2018-15473", "CVE-2020-0001"])
-        self.assertEqual(por_activo["203.0.113.10:22/tcp"].confianza, 0.65)  # 2 fuentes
+        self.assertEqual(por_activo["203.0.113.10:22/tcp"].confianza, 0.5)  # una fuente
         self.assertEqual(por_activo["203.0.113.10"].evidencia["detalle"]["cves"], ["CVE-2024-0001"])
 
     def test_misma_cve_en_ip_y_servicio_no_duplica_hallazgo(self):
@@ -244,20 +244,20 @@ class CertificadosTests(unittest.TestCase):
         return (AHORA + timedelta(days=dias)).isoformat()
 
     def web(self, valor, check, **datos):
-        return obs("subdominio", valor, "info_host", fuente="Web", check=check, **datos)
+        return obs("subdominio", valor, "info_host", fuente="Web", check=check, comprobacion_activa=True, **datos)
 
     def test_expirado_reciente(self):
         self.assertEqual(codigos(evaluar([self.cert("dev.ej.com", self.iso(-10))])), [])
         r = evaluar([self.cert("dev.ej.com", self.iso(-10)),
                     self.web("dev.ej.com", "tls_invalido", verify_code=10)])
-        self.assertEqual(codigos(r), ["CONF-001"])
-        self.assertEqual(r.hallazgos[0].evidencia["detalle"]["dias_vencido"], 10)
+        self.assertEqual(codigos(r), ["CONF-006"])
+        self.assertEqual(r.hallazgos[0].evidencia["detalle"]["verify_code"], 10)
 
     def test_fallo_tls_por_nombre_distinto_no_prueba_certificado_vencido(self):
         self.assertEqual(codigos(evaluar([
             self.cert("www.ej.com", self.iso(-10)),
             self.web("www.ej.com", "tls_invalido", verify_code=62),
-        ])), [])
+        ])), ["CONF-006"])
 
     def test_expirado_hace_mucho_se_ignora_como_host_abandonado(self):
         self.assertEqual(codigos(evaluar([self.cert("viejo.ej.com", self.iso(-400))])), [])
@@ -274,8 +274,8 @@ class CertificadosTests(unittest.TestCase):
         self.assertEqual(codigos(evaluar([self.cert("api.ej.com", self.iso(12))])), [])
         self.assertEqual(codigos(evaluar([
             self.cert("api.ej.com", self.iso(12)),
-            self.web("api.ej.com", "tls_verificado", valid_until=self.iso(12)),
-        ])), ["CONF-002"])
+            self.web("api.ej.com", "tls_por_expirar", valid_until=self.iso(12)),
+        ])), ["CONF-007"])
         self.assertEqual(codigos(evaluar([self.cert("api.ej.com", self.iso(45))])), [])
 
     def test_fechas_invalidas_no_rompen(self):
@@ -326,7 +326,7 @@ class PosturaDnsTests(unittest.TestCase):
 class PuntajesTests(unittest.TestCase):
     def test_senales_informativas_se_guardan_sin_aumentar_el_score(self):
         reglas = [
-            Regla(r.id, r.codigo, r.nombre, r.categoria, r.severidad, 0 if r.codigo in {"CONF-001", "CONF-002", "IDEN-003"} else r.peso, r.esta_activa)
+            Regla(r.id, r.codigo, r.nombre, r.categoria, r.severidad, 0 if r.codigo in {"CONF-006", "CONF-007", "IDEN-003"} else r.peso, r.esta_activa)
             for r in CATALOGO
         ]
         r = evaluar([
@@ -382,16 +382,16 @@ class CoberturaYFuentesTests(unittest.TestCase):
         c = evaluar([]).puntaje.cobertura
         self.assertEqual(c["total_reglas"], 8)
         self.assertEqual(c["reglas_activas"], 6)
-        self.assertEqual(c["evaluadas"], ["CONF-001", "CONF-002", "IDEN-003", "INFRA-001", "INFRA-002", "INFRA-003"])
+        self.assertEqual(c["evaluadas"], ["CONF-006", "CONF-007", "IDEN-003", "INFRA-001", "INFRA-002", "INFRA-003"])
         self.assertEqual(self.motivos(evaluar([])), {"CONF-003": "inactiva", "FUGA-001": "inactiva"})
         self.assertEqual(c["porcentaje_evaluadas"], 100)
 
-    def test_si_falla_shodan_pero_spiderfoot_responde_las_reglas_de_infra_se_evaluan_igual(self):
-        estado = {**TODAS_OK, "Shodan": "fallido"}
+    def test_si_falla_web_pero_spiderfoot_responde_las_reglas_de_infra_se_evaluan_igual(self):
+        estado = {**TODAS_OK, "Web": "fallido"}
         r = evaluar([obs("servicio", "203.0.113.10:22/tcp", "servicio_expuesto", fuente="SpiderFoot")], estado)
         self.assertEqual(codigos(r), ["INFRA-001"])
         self.assertTrue(r.puntaje.es_parcial)
-        self.assertEqual(r.puntaje.fuentes_faltantes, ["Shodan"])
+        self.assertEqual(r.puntaje.fuentes_faltantes, ["Web"])
 
     def test_fuente_parcial_con_evidencia_contribuye_y_baja_cobertura(self):
         estado = {**TODAS_OK, "SpiderFoot": "parcial"}
@@ -401,17 +401,17 @@ class CoberturaYFuentesTests(unittest.TestCase):
         self.assertIn("SpiderFoot", r.puntaje.fuentes_faltantes)
 
     def test_si_fallan_todas_las_fuentes_de_una_regla_no_se_da_por_limpia(self):
-        estado = {**TODAS_OK, "Shodan": "fallido", "SpiderFoot": "fallido"}
+        estado = {**TODAS_OK, "SpiderFoot": "fallido"}
         r = evaluar([], estado)
         self.assertEqual(self.motivos(r)["INFRA-001"], "fuentes_fallidas")
         self.assertNotIn("INFRA-001", r.puntaje.cobertura["evaluadas"])
-        self.assertIn("CONF-001", r.puntaje.cobertura["evaluadas"])  # crt.sh sí terminó
-        self.assertEqual(r.puntaje.fuentes_faltantes, ["Shodan", "SpiderFoot"])
+        self.assertIn("CONF-006", r.puntaje.cobertura["evaluadas"])  # Web sí terminó
+        self.assertEqual(r.puntaje.fuentes_faltantes, ["SpiderFoot"])
 
     def test_una_fuente_aun_ejecutando_cuenta_como_faltante(self):
-        r = evaluar([], {**TODAS_OK, "crt.sh": "ejecutando"})
+        r = evaluar([], {**TODAS_OK, "Web": "ejecutando"})
         self.assertTrue(r.puntaje.es_parcial)
-        self.assertEqual(self.motivos(r)["CONF-001"], "fuentes_fallidas")
+        self.assertEqual(self.motivos(r)["CONF-006"], "fuentes_fallidas")
 
     def test_fuente_deshabilitada_informa_cobertura_sin_alterar_los_puntajes(self):
         estado = {**TODAS_OK, "crt.sh": "deshabilitado"}

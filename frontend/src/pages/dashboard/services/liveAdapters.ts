@@ -54,7 +54,7 @@ function isDocumentationAsset(value: string): boolean {
 }
 
 export function liveAssets(data: ClientData): AssetRecord[] {
-  const sourceNames = new Map(data.sources.map((source) => [source.id, source.nombre]))
+  const sourceNames = new Map(data.sources.filter(source => isActiveSource(source.nombre)).map((source) => [source.id, source.nombre]))
   const rules = new Map(data.rules.map((rule) => [rule.id, rule]))
   const latestObservationIds = new Set(data.observations.map((observation) => observation.id))
   const openStates = new Set(['abierto', 'nuevo', 'revisado', 'aceptado'])
@@ -79,7 +79,7 @@ export function liveAssets(data: ClientData): AssetRecord[] {
       && (rules.get(finding.regla_id!)?.peso ?? 0) > 0)
     const informationalFindings = activeFindings.length - riskFindings.length
     const assetCoverage = coverageAssets.get(asset.id)
-    const inferredExposure = isDocumentationAsset(asset.valor) ? 'Histórico/sintético'
+    const inferredExposure = assetCoverage?.clasificacion_exposicion === 'historico_sintetico' || isDocumentationAsset(asset.valor) ? 'Histórico/sintético'
       : assetCoverage?.motivo?.startsWith('Fuera del alcance') ? 'Fuera de alcance'
         : assetCoverage?.motivo?.startsWith('Tipo sin consulta compatible') ? 'Sin evaluación compatible'
           : undefined
@@ -187,7 +187,7 @@ export function liveFindings(data: ClientData): FindingRecord[] {
 
 export function liveHistory(data: ClientData): HistoryEvent[] {
   const events: Array<HistoryEvent & { timestamp: number }> = []
-  const sourceNames = new Map(data.sources.map((source) => [source.id, source.nombre]))
+  const sourceNames = new Map(data.sources.filter(source => isActiveSource(source.nombre)).map((source) => [source.id, source.nombre]))
   const risks = new Map(data.risks.map((risk) => [risk.escaneo_id, risk]))
   for (const scan of data.scans) {
     const when = scan.finalizado_en ?? scan.iniciado_en
@@ -200,6 +200,7 @@ export function liveHistory(data: ClientData): HistoryEvent[] {
     events.push({ id: `asset-${asset.id}`, kind: 'asset', date: shortDate(when), time: shortTime(when), title: `${asset.tipo} registrado`, detail: asset.valor, context: data.organization.nombre, contextDetail: 'Activo del inventario', impact: '—', impactDetail: 'Sin impacto individual', impactTone: 'neutral', status: 'Registrado', followUp: false, timestamp: new Date(when).getTime() })
   }
   for (const result of data.sourceResults) {
+    if (!sourceNames.has(result.fuente_id)) continue
     const when = result.finalizado_en ?? result.iniciado_en
     if (!when) continue
     events.push({ id: `source-${result.id}`, kind: 'source', date: shortDate(when), time: shortTime(when), title: `${sourceNames.get(result.fuente_id) ?? 'Fuente'}: ${result.estado}`, detail: result.error ?? `${result.observaciones_generadas} observaciones`, context: sourceNames.get(result.fuente_id) ?? 'Fuente OSINT', contextDetail: result.error ?? 'Resultado del último análisis', impact: '—', impactDetail: 'Resultado de fuente', impactTone: result.estado === 'fallido' ? 'warning' : 'neutral', status: result.estado, followUp: result.estado === 'fallido', timestamp: new Date(when).getTime() })
@@ -221,7 +222,6 @@ export function liveHistoryScans(data: ClientData): HistoryScan[] {
 }
 
 export function liveRelations(data: ClientData): { nodes: RelationNode[]; edges: RelationEdge[]; routes: PriorityRoute[] } {
-  const positions = [[22, 24], [77, 21], [85, 63], [56, 83], [18, 73], [14, 49]]
   const domain = data.organization.dominio_principal
   const sourceNames = new Map(data.sources.map((source) => [source.id, source.nombre]))
   const domainSources = [...new Set(data.observations
@@ -237,14 +237,19 @@ export function liveRelations(data: ClientData): { nodes: RelationNode[]; edges:
       const rightAsset = data.assets.find((asset) => asset.id === right.id)
       return Number(Boolean(rightAsset && relatedToDomain(rightAsset))) - Number(Boolean(leftAsset && relatedToDomain(leftAsset)))
     })
-    .slice(0, positions.length)
-  const nodes: RelationNode[] = [{ id: 'root', name: domain, badge: 'DOM', kind: 'Organización', caption: `${data.assetCount} activos`, impact: `${data.assetCount} activos registrados`, description: `Dominio principal de ${data.organization.nombre}. El mapa agrupa el inventario; la cantidad de activos no representa hallazgos ni aumenta por sí sola el Risk Score.`, sources: domainSources, related: `${data.assetCount} activos registrados`, tone: 'domain', x: 50, y: 49 }]
+  const columns = 4
+  const canvasHeight = Math.max(720, 300 + Math.ceil(assets.length / columns) * 160)
+  const nodes: RelationNode[] = [{ id: 'root', name: domain, badge: 'DOM', kind: 'Dominio principal', caption: `${data.assetCount} activos`, impact: `${data.assetCount} activos registrados`, description: `Dominio principal de ${data.organization.nombre}. Una resolución DNS no prueba propiedad de la IP compartida.`, sources: domainSources, related: `${data.assetCount} activos registrados`, tone: 'domain', x: 50, y: 9000 / canvasHeight }]
   const edges: RelationEdge[] = []
   assets.forEach((asset, index) => {
     const related = findings.filter((finding) => finding.asset === asset.value)
     const tone = related.some((finding) => finding.severity === 'critical') ? 'critical' : asset.kind === 'Correo' ? 'identity' : asset.kind === 'IP pública' || asset.kind === 'Servicio' ? 'service' : 'domain'
-    nodes.push({ id: asset.id, name: asset.value, badge: asset.kind === 'Correo' ? 'ID' : asset.kind === 'IP pública' ? 'IP' : asset.kind === 'Servicio' ? 'SV' : 'SUB', kind: asset.kind, caption: `${related.length} ${related.length === 1 ? 'hallazgo' : 'hallazgos'}`, impact: related.length ? `${related.length} ${related.length === 1 ? 'hallazgo' : 'hallazgos'}` : 'Sin hallazgos', description: related.length ? asset.description : `${asset.description} Ninguna regla activa confirmó un riesgo para este activo en el último análisis terminado.`, sources: asset.sources, related: domain, tone, x: positions[index][0], y: positions[index][1] })
-    if (asset.kind === 'Subdominio' || asset.kind === 'Correo') {
+    const classification = asset.exposure === 'Histórico/sintético' ? 'Histórico / sintético' : asset.kind === 'IP pública' || asset.kind === 'Servicio' ? 'Infraestructura compartida o no atribuida' : asset.value.toLowerCase().endsWith(`.${domain.toLowerCase()}`) || asset.value.toLowerCase().endsWith(`@${domain.toLowerCase()}`) ? 'Nombre del dominio' : 'Externo / por verificar'
+    nodes.push({ id: asset.id, name: asset.value, badge: asset.kind === 'Correo' ? 'ID' : asset.kind === 'IP pública' ? 'IP' : asset.kind === 'Servicio' ? 'SV' : 'SUB', kind: `${asset.kind} · ${classification}`, caption: classification, impact: related.length ? `${related.length} ${related.length === 1 ? 'hallazgo' : 'hallazgos'}` : 'Sin hallazgos', description: `${asset.description} ${classification}.`, sources: asset.sources, related: 'Sin vínculo verificado', tone, x: 12.5 + (index % columns) * 25, y: (250 + Math.floor(index / columns) * 160) * 100 / canvasHeight })
+    const hasNameEvidence = data.observations.some((observation) => observation.activo_id === asset.id && (observation.atributo === 'descubierto' || observation.atributo === 'correo'))
+    const belongsToDomain = asset.kind === 'Subdominio' && asset.value.toLowerCase().endsWith(`.${domain.toLowerCase()}`)
+      || asset.kind === 'Correo' && asset.value.toLowerCase().endsWith(`@${domain.toLowerCase()}`)
+    if (belongsToDomain && hasNameEvidence && asset.exposure !== 'Histórico/sintético') {
       edges.push({ id: `root-${asset.id}`, from: 'root', to: asset.id, critical: tone === 'critical' })
     }
   })
@@ -260,7 +265,15 @@ export function liveRelations(data: ClientData): { nodes: RelationNode[]; edges:
       edges.push({ id: `dns-${from}-${to}`, from, to })
     }
   }
-  const routes: PriorityRoute[] = findings.filter((finding) => assets.some((asset) => asset.value === finding.asset)).slice(0, 3).map((finding) => {
+  const nodeNames = new Map(nodes.map((node) => [node.id, node.name]))
+  nodes.forEach((node) => {
+    const linked = edges.filter((edge) => edge.from === node.id || edge.to === node.id)
+    node.related = linked.length ? linked.map((edge) => {
+      const other = nodeNames.get(edge.from === node.id ? edge.to : edge.from) ?? 'Activo no disponible'
+      return `${other} (${edge.id.startsWith('dns-') ? 'resolución DNS' : 'nombre observado'})`
+    }).join(' · ') : 'Sin vínculo verificado en este mapa'
+  })
+  const routes: PriorityRoute[] = findings.filter((finding) => assets.some((asset) => asset.value === finding.asset && edges.some((edge) => edge.from === asset.id || edge.to === asset.id))).slice(0, 3).map((finding) => {
     const asset = assets.find((item) => item.value === finding.asset)!
     return { id: finding.id, title: finding.title, path: `Organización → ${asset.kind.toLowerCase()}`, impact: finding.severity.toUpperCase(), nodeId: asset.id, edgeIds: edges.filter((edge) => edge.to === asset.id || edge.from === asset.id).map((edge) => edge.id) }
   })

@@ -16,6 +16,11 @@ function duration(seconds: number) {
   return whole < 60 ? `${whole} s` : `${Math.floor(whole / 60)} min ${String(whole % 60).padStart(2, '0')} s`
 }
 
+function durationAxis(seconds: number) {
+  const step = seconds <= 10 ? 2 : seconds <= 30 ? 5 : seconds <= 60 ? 10 : seconds <= 180 ? 30 : 60
+  return Math.max(step, Math.ceil(seconds / step) * step)
+}
+
 function sourceState(source: SourceProgress) {
   if (source.error === 'Detenido por el usuario') return { label: 'Detenida', tone: 'stopped' }
   if (source.estado === 'completado') return source.error ? { label: 'Parcial', tone: 'partial' } : { label: 'Completada', tone: 'done' }
@@ -44,7 +49,7 @@ export default function ScanProgressPanel({ progress, canStop, stopping, onStop 
     ...source,
     seconds: secondsBetween(source.iniciado_en ?? progress.iniciado_en, source.finalizado_en, now),
   }))
-  const axis = Math.max(30, Math.ceil(Math.max(elapsed, ...timeline.map((source) => source.seconds)) / 30) * 30)
+  const axis = durationAxis(Math.max(elapsed, ...timeline.map((source) => source.seconds)))
   const percentage = sources.length ? Math.round(finished / sources.length * 100) : 0
 
   return <section className="scan-progress-panel" aria-labelledby="scan-progress-title">

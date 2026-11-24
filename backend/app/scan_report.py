@@ -9,7 +9,6 @@ from app.spiderfoot_passive import reports as passive_reports
 _SECURITY_PROVIDERS = {
     "google_dns_doh": "Postura DNS mediante Google Public DNS DoH",
     "internetdb": "Servicios y vulnerabilidades publicados por InternetDB",
-    "shodan": "Servicios y vulnerabilidades publicados por Shodan",
 }
 
 _DOCUMENTATION_NETWORKS = tuple(ipaddress.ip_network(value) for value in (
@@ -35,7 +34,7 @@ def _security_checks(outcomes, target):
             continue
         if provider == "google_dns_doh" and (is_ip or not report.get("checks")):
             continue
-        if provider in {"internetdb", "shodan"} and not is_ip:
+        if provider == "internetdb" and not is_ip:
             continue
         if provider not in _SECURITY_PROVIDERS:
             continue
@@ -86,7 +85,7 @@ def build_coverage(assets, outcomes, scope, initial_targets):
             "fuera_alcance" if not allowed else
             "sin_evaluacion"
         )
-        reason = ("Activo histórico/sintético basado en una dirección reservada para documentación" if historical else
+        reason = ("Activo histórico/sintético basado en una dirección reservada para documentación" if is_ip and _is_documentation_address(target) else
                   "Tipo sin consulta compatible en las fuentes configuradas" if not compatible else
                   "Fuera del alcance autorizado; una relación DNS no autoriza la IP del proveedor" if not allowed else
                   omitted_reason if omitted_reason else

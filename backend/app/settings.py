@@ -22,7 +22,6 @@ def _enabled(name: str, default: bool) -> bool:
 class Settings:
     supabase_url: str
     supabase_service_role_key: str
-    shodan_api_key: str | None
     theharvester_bin: str
     theharvester_sources: str
     spiderfoot_url: str
@@ -32,8 +31,7 @@ class Settings:
     spiderfoot_poll_seconds: float
     scan_timeout_seconds: float
     crtsh_retries: int
-    shodan_max_ips: int
-    shodan_pause_seconds: float
+    web_enabled: bool = True
     frontend_url: str = "http://localhost:5173"
     crtsh_timeout_seconds: float = 15
     crtsh_total_timeout_seconds: float = 45
@@ -63,9 +61,6 @@ class Settings:
                 "las llaves sb_secret_ requieren actualizar y validar el SDK."
             )
 
-        shodan_api_key = os.getenv("SHODAN_API_KEY", "").strip()
-        if shodan_api_key.lower().startswith("replace-"):
-            shodan_api_key = ""
         nvd_api_key = os.getenv("NVD_API_KEY", "").strip()
         if nvd_api_key.lower().startswith("replace-"):
             nvd_api_key = ""
@@ -73,7 +68,7 @@ class Settings:
         return cls(
             supabase_url=supabase_url,
             supabase_service_role_key=service_key,
-            shodan_api_key=shodan_api_key or None,
+            web_enabled=True,
             nvd_api_key=nvd_api_key or None,
             theharvester_bin=os.getenv("THEHARVESTER_BIN", "theHarvester").strip(),
             theharvester_sources=os.getenv(
@@ -94,8 +89,6 @@ class Settings:
             # Tiempo máximo por fuente; debe ser mayor que SPIDERFOOT_TIMEOUT_SECONDS.
             scan_timeout_seconds=float(os.getenv("SCAN_TIMEOUT_SECONDS", "2100")),
             crtsh_retries=max(1, min(2, int(os.getenv("CRTSH_RETRIES", "2")))),
-            shodan_max_ips=int(os.getenv("SHODAN_MAX_IPS", "10")),
-            shodan_pause_seconds=float(os.getenv("SHODAN_PAUSE_SECONDS", "1.1")),
             frontend_url=os.getenv("FRONTEND_URL", "http://localhost:5173").strip().rstrip("/"),
             crtsh_timeout_seconds=max(
                 1, min(15, float(os.getenv("CRTSH_TIMEOUT_SECONDS", "15")))

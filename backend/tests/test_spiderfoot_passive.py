@@ -47,10 +47,6 @@ def export(report, **extra):
             "scan_target": report["target"], "false_positive": 0, **extra}
 
 
-def host(transport="tcp", verified=True, port=22):
-    return {"ip_str": IP, "data": [{"port": port, "transport": transport,
-        "timestamp": "2026-11-01T12:00:00Z", "data": "Fixture banner", "product": "FixtureServer", "version": "1.0",
-        "vulns": {"CVE-2024-12345": {"verified": verified}}}]}
 
 
 def normalized(report):
@@ -76,8 +72,7 @@ def dns_fetch(records=None, failures=None, ad=False, statuses=None):
 
 @pytest.mark.parametrize("provider,target,kwargs", [
     ("urlscan", "api.example.com", {}), ("common_crawl", "api.example.com", {}),
-    ("internetdb", IP, {"internetdb_use": "noncommercial"}),
-    ("shodan", IP, {"api_key": "test-secret"})])
+    ("internetdb", IP, {"internetdb_use": "noncommercial"})])
 @pytest.mark.parametrize("status", [401, 403, 429, 500, 302])
 def test_http_failure_never_becomes_empty(provider, target, kwargs, status):
     result = collect(provider, target, lambda *_: (status, {}), **kwargs)
@@ -100,13 +95,12 @@ def test_bad_json_schema_is_failure(body):
 
 def test_keys_and_license_are_explicit_without_requests():
     fetch = Mock(side_effect=AssertionError("No request allowed"))
-    assert collect("shodan", IP, fetch)["status"] == "unavailable"
     assert collect("internetdb", IP, fetch)["status"] == "unavailable"
     fetch.assert_not_called()
 
 
-def test_network_error_does_not_export_credentials():
-    result = collect("shodan", IP, Mock(side_effect=RuntimeError("https://provider?key=test-secret")), api_key="test-secret")
+def test_network_error_does_not_export_provider_exception():
+    result = collect("internetdb", IP, Mock(side_effect=RuntimeError("https://provider?key=test-secret")), internetdb_use="noncommercial")
     assert result["status"] == "error" and "test-secret" not in json.dumps(result)
 
 
@@ -375,7 +369,7 @@ def test_conf008_stale_or_newer_secure_redirect_suppresses_historical_candidate(
                for event in events)
 
 
-def test_conf006_ct_urlscan_and_retired_web_evidence_never_score():
+def test_conf006_ct_urlscan_and_unmarked_historical_web_evidence_never_score():
     search = {"results": [{"_id": "tls-history", "task": {"time": "2026-11-18T12:00:00Z"},
                            "page": {"domain": "api.example.com", "url": "https://api.example.com/",
                                     "status": 200, "mimeType": "text/html", "tlsIssuer": "Fixture CA",
@@ -402,8 +396,7 @@ def test_conf006_ct_urlscan_and_retired_web_evidence_never_score():
                           {"SpiderFoot": "completado", "crt.sh": "completado", "Web": "completado"}, NOW)
     assert any(row["datos"].get("tipo_evento") == "URLSCAN_TLS_CERTIFICATE" for row in spiderfoot_rows)
     assert risk.hallazgos == [] and risk.puntaje.puntaje_global == 0
-    assert risk.puntaje.cobertura["no_evaluadas"] == [{"codigo": "CONF-006", "motivo": "sin_evaluador"}]
-    assert "CONF-006" in RETIRED_RISK_RULES
+    assert risk.puntaje.cobertura["no_evaluadas"] == []
 
 
 def _conf007_result(report, active=True, extra=None, *, now=datetime(2026, 11, 20, tzinfo=timezone.utc)):
@@ -440,7 +433,7 @@ def test_conf007_recent_exact_urlscan_certificate_is_only_potential_while_inacti
         assert result.hallazgos[0].evidencia["detalle"]["verificado_actual"] is False
         assert result.puntaje.puntaje_global == 0
         assert result.puntaje.cobertura["riesgo_potencial"]["puntaje_global"] > 0
-    assert DEFINICIONES["CONF-007"].requiere_fuentes == ("SpiderFoot",)
+    assert DEFINICIONES["CONF-007"].requiere_fuentes == ("SpiderFoot", "Web")
     assert "CONF-007" not in RETIRED_RISK_RULES
 
 
@@ -953,19 +946,8 @@ def test_internetdb_cpes_ports_and_cves_are_informational():
     assert not any(row.get("observado_en") for row in rows)
 
 
-@pytest.mark.parametrize("transport,verified,port,expected", [("tcp", True, 22, 19), ("tcp", False, 22, 13), ("udp", False, 22, 0), ("tcp", False, 5432, 26), ("tcp", True, 443, 6)])
-def test_provider_to_normalizer_to_unchanged_risk_rules(transport, verified, port, expected):
-    result = collect("shodan", IP, lambda *_: (200, host(transport, verified, port)), api_key="fixture-key")
-    rows = normalized(result)
-    assert result["status"] == "ok" and score(rows) == expected
-    assert all(row["datos"]["modulo"] == "sfp_baxter_shodan" for row in rows)
-    assert any(row["atributo"] == "info_host" and row["datos"]["valor"] == "FixtureServer 1.0" for row in rows)
-    assert "fixture-key" not in json.dumps(result)
 
 
-def test_bad_shodan_transport_never_defaults_to_tcp():
-    result = collect("shodan", IP, lambda *_: (200, host(None)), api_key="fixture-key")
-    assert result["status"] == "error" and normalized(result) == []
 
 
 @pytest.mark.parametrize("target", ["127.0.0.1", "10.0.0.1", "::1"])
@@ -976,7 +958,7 @@ def test_private_ip_denied(target):
 
 def test_profile_rejects_active_modules_and_migrates_legacy_preset():
     with pytest.raises(ValueError):
-        selected_modules("example.com", "sfp_spider,sfp_shodan")
+        selected_modules("example.com", "sfp_spider,sfp_active_unknown")
     assert selected_modules("example.com", LEGACY_MODULES) == [
         "sfp_dnsresolve", "sfp_dnsraw", "sfp_robtex", "sfp_crobat_api",
         "sfp_baxter_dns_doh", "sfp_baxter_urlscan", "sfp_baxter_rdap",
@@ -992,46 +974,24 @@ def test_profile_rejects_active_modules_and_migrates_legacy_preset():
     ) == ["sfp_baxter_urlscan", "sfp_baxter_rdap"]
     with pytest.raises(ValueError):
         selected_modules(IP)
-    assert selected_modules(IP, "sfp_baxter_internetdb,sfp_baxter_shodan") == ["sfp_baxter_internetdb", "sfp_baxter_shodan"]
+    assert selected_modules(IP, "sfp_baxter_internetdb") == ["sfp_baxter_internetdb"]
 
 
 def test_false_positive_and_wrong_target_envelopes_not_ingested():
-    result = collect("shodan", IP, lambda *_: (200, host()), api_key="fixture-key")
+    result = collect("internetdb", IP, lambda *_: (200, {"ip": IP, "ports": [], "cpes": [], "vulns": []}), internetdb_use="noncommercial")
     for extra in ({"false_positive": 1}, {"scan_target": "9.9.9.9"}):
         raw = [export(result, **extra)]
         assert reports(raw) == []
         assert adaptar("SpiderFoot", raw, "example.com")["observaciones"] == []
 
 
-def test_real_http_orchestration_contract_preserves_partial_and_missing_modules():
-    available = collect("shodan", IP, lambda *_: (200, host()), api_key="fixture-key")
-    unavailable = collect("internetdb", IP, Mock())
-    client_class = httpx.AsyncClient
-    def run(payload):
-        def handler(request):
-            if request.url.path == "/startscan":
-                assert b"sfp_baxter_internetdb" in request.content and b"sfp_baxter_shodan" in request.content
-                return httpx.Response(200, json=["SUCCESS", "fixture-scan"])
-            if request.url.path == "/scanstatus":
-                return httpx.Response(200, json=[None]*5 + ["FINISHED"])
-            return httpx.Response(200, json=payload)
-        with patch.object(orchestrators.httpx, "AsyncClient", side_effect=lambda **kw: client_class(transport=httpx.MockTransport(handler), **kw)):
-            settings = orchestrators.OrchestratorSettings(
-                spiderfoot_modules="sfp_baxter_internetdb,sfp_baxter_shodan"
-            )
-            return asyncio.run(orchestrators.run_spiderfoot(IP, settings))
-    partial = run([export(available), export(unavailable)])
-    assert not partial.failed and "internetdb" in partial.error
-    assert score(adaptar("SpiderFoot", partial.data, "example.com")["observaciones"]) == 19
-    missing = run([])
-    assert missing.failed and "Sin constancia" in missing.error
 
 
 def test_inventory_multiasset_scope_budget_and_coverage():
     called = []
     async def runner(target):
         called.append(target)
-        report = collect("urlscan", target, lambda *_: (200, {"results": []})) if not target[0].isdigit() else collect("shodan", target, lambda *_: (200, host()), api_key="fixture-key")
+        report = collect("urlscan", target, lambda *_: (200, {"results": []})) if not target[0].isdigit() else collect("internetdb", target, lambda *_: (200, {"ip": target, "ports": [], "cpes": [], "vulns": []}), internetdb_use="noncommercial")
         return orchestrators.RunnerOutput([export(report)])
     outcome = asyncio.run(orchestrators.run_all("example.com", orchestrators.OrchestratorSettings(),
         runners={"SpiderFoot": runner}, targets=["example.com", "api.example.com", IP, "9.9.9.9", "other.net"],
@@ -1049,8 +1009,7 @@ def test_inventory_multiasset_scope_budget_and_coverage():
 
 @pytest.mark.parametrize("provider,target,options,body", [
     ("urlscan", "example.com", {"api_key": "fixture-urlscan"}, {"results": []}),
-    ("internetdb", IP, {"use": "noncommercial"}, {"ip": IP, "ports": [], "cpes": [], "vulns": []}),
-    ("shodan", IP, {"api_key": "fixture-key"}, host())])
+    ("internetdb", IP, {"use": "noncommercial"}, {"ip": IP, "ports": [], "cpes": [], "vulns": []})])
 def test_plugin_exact_target_no_recursive_expansion(provider, target, options, body):
     event_class = lambda event_type, data, module, source: types.SimpleNamespace(eventType=event_type, data=data, module=module)
     stub = types.SimpleNamespace(SpiderFootPlugin=type("Plugin", (), {}), SpiderFootEvent=event_class)
@@ -1335,7 +1294,7 @@ def test_dns_doh_chunk_roundtrip_preserves_normalization_and_issues():
 def test_failed_source_preserves_raw_provider_errors_for_report():
     from app import scan_service
     from unittest.mock import MagicMock
-    raw = [export(collect("shodan", IP, Mock()))]
+    raw = [export(collect("internetdb", IP, Mock()))]
     summary = {"resultado_crudo_id": "raw-fixture", "ya_procesado": False, "observaciones_generadas": 0,
                "activos_nuevos": 0, "activos_existentes": 0, "observaciones_nuevas": 0,
                "observaciones_duplicadas": 0, "descartadas": {}}
@@ -1369,29 +1328,10 @@ def test_authorized_inventory_over_limit_is_pending_not_evaluated():
     assert "Límite" in coverage["activos"][0]["motivo"]
 
 
-def test_ipv6_services_preserve_address_and_transport():
-    address = "2606:4700:4700::1111"
-    data = host(port=5432, verified=False)
-    data["ip_str"] = address
-    result = collect("shodan", address, lambda *_: (200, data), api_key="fixture-key")
-    rows = normalized(result)
-    assert score(rows) == 26
-    assert all(row["valor"] == f"[{address}]:5432/tcp" for row in rows)
 
 
-def test_foreign_banner_is_not_attributed_to_target():
-    data = host()
-    data["data"][0]["ip_str"] = "9.9.9.9"
-    result = collect("shodan", IP, lambda *_: (200, data), api_key="fixture-key")
-    assert result["status"] == "error" and normalized(result) == []
 
 
-def test_truncated_provider_banner_marks_partial():
-    data = host()
-    data["data"][0]["metadata"] = {"truncated": ["http.html"]}
-    result = collect("shodan", IP, lambda *_: (200, data), api_key="fixture-key")
-    assert result["status"] == "partial"
-    assert score(normalized(result)) == 19
 
 
 def test_spiderfoot_ui_seed_is_not_provider_evidence():

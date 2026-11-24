@@ -19,7 +19,7 @@ from app.risk.persistencia import (
 
 
 REGLA = Regla("regla-1", "INFRA-001", "Administración remota", "infraestructura", "alta", 15)
-ESTADOS = {"SpiderFoot": "completado", "Shodan": "fallido"}
+ESTADOS = {"SpiderFoot": "completado", "Web": "fallido"}
 OBS = Obs("obs-1", "activo-1", "servicio", "203.0.113.10:22/tcp", "servicio_expuesto", {}, "SpiderFoot", "fuente-1")
 
 
@@ -179,11 +179,11 @@ def test_servicio_de_ip_compartida_no_aumenta_el_riesgo():
 def test_cve_de_ip_autorizada_aporta_riesgo_y_de_ip_compartida_no():
     observation = Obs(
         "obs-cve", "asset-ip", "ip", "8.8.8.8", "cve",
-        {"cve": "CVE-2024-12345", "verificado": True}, "Shodan", "source-shodan",
+        {"cve": "CVE-2024-12345", "verificado": True}, "SpiderFoot", "source-spiderfoot",
     )
     rule = Regla("rule-cve", "INFRA-003", "CVE reportada", "infraestructura", "media", 8)
     allowed, _ = _observaciones_atribuidas([observation], "example.com, 8.8.8.8")
-    findings = evaluar_riesgo(allowed, [rule], {"Shodan": "completado"}).hallazgos
+    findings = evaluar_riesgo(allowed, [rule], {"SpiderFoot": "completado"}).hallazgos
     assert len(findings) == 1
     assert puntuar_hallazgos(findings, [rule])["puntaje_global"] > 0
     assert _hallazgo_atribuido(_anterior(findings[0]), "example.com, 8.8.8.8")

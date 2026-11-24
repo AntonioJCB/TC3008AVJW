@@ -2,7 +2,7 @@
 
 Esta configuración es para desarrollo compartido. Construye una imagen del
 backend que incluye el ejecutable de theHarvester y otra imagen para el servicio
-web de SpiderFoot. crt.sh y Shodan se consultan por HTTPS; Supabase sigue siendo
+web de SpiderFoot. crt.sh se consulta por HTTPS; Supabase sigue siendo
 externo. No hace falta clonar las herramientas en `backend/` ni instalarlas en
 Windows: los Dockerfiles las descargan en commits fijos durante la construcción.
 
@@ -22,8 +22,8 @@ iniciar. `docker compose config` funciona sin el motor, pero `build` y `up` no.
 
 Configura `backend/.env` a partir de `backend/.env.example` si aún no existe.
 Necesitas `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` del mismo proyecto. La
-clave de Shodan es opcional; la cuenta debe tener acceso a las rutas DNS y host
-para que esa fuente funcione. El archivo `.env` no debe subirse a Git.
+validación Web activa requiere `WEB_ACTIVE_ENABLED=true` y consentimiento en cada
+análisis. El archivo `.env` no debe subirse a Git.
 
 Compose establece dentro del contenedor las dos rutas que cambian respecto a
 Windows:
@@ -66,7 +66,7 @@ docker compose logs --tail=80 backend spiderfoot
 La ruta `/health` confirma que FastAPI responde. El puerto 5001 y la consulta
 desde `backend` confirman que SpiderFoot escucha y es alcanzable en la red
 interna. `theHarvester -h` confirma que el ejecutable quedó instalado. Ninguna
-de estas comprobaciones demuestra que crt.sh o la cuenta de Shodan respondan.
+de estas comprobaciones demuestra que crt.sh responda.
 
 En el navegador, la API estará en `http://127.0.0.1:8000/docs` y la interfaz
 local de SpiderFoot en `http://127.0.0.1:5001/`. Ejecuta un escaneo desde el
@@ -85,8 +85,7 @@ docker compose down
 `docker compose down` detiene los servicios. Los datos de SpiderFoot permanecen
 en el volumen `spiderfoot-data`. No uses `down -v` si quieres conservarlos.
 
-Si Shodan devuelve 403 con `Requires membership`, la instalación del contenedor
-está bien; revisa el plan de la cuenta. Un `ReadTimeout` de crt.sh puede ocurrir
+Un `ReadTimeout` de crt.sh puede ocurrir
 aunque la red del contenedor funcione. Consulta [osint.md](osint.md) para el
 diagnóstico de cada fuente.
 

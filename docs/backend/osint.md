@@ -1,8 +1,8 @@
 # Puesta en marcha de fuentes OSINT
 
 El backend ejecuta tres adaptadores pasivos: crt.sh, theHarvester y
-SpiderFoot. Web y Shodan conservan código, catálogo y evidencia histórica,
-pero están fuera de los análisis nuevos.
+SpiderFoot. Web es una validación activa opcional con habilitación del servidor
+y consentimiento explícito por análisis.
 Un resultado `completado`
 con cero observaciones significa que la consulta terminó y no encontró datos normalizables.
 `incompleto` significa que alguna fuente falló; `fallido`, que ninguna terminó.
@@ -23,10 +23,9 @@ Test-NetConnection 127.0.0.1 -Port 5001
 | Fuente | Requisito | Fallo frecuente | Acción |
 | --- | --- | --- | --- |
 | crt.sh | Acceso HTTPS a `crt.sh` | `ReadTimeout`, HTTP 429 o 502/504 | Hasta cuatro intentos con espera creciente; respeta `Retry-After` en HTTP 429 y espera 30 s cuando falta esa cabecera. Ajusta `CRTSH_TIMEOUT_SECONDS` si la red es lenta. Si crt.sh sigue caído, la fuente queda fallida para no presentar datos incompletos como cobertura sana. |
-| Shodan | Integración desactivada del flujo predeterminado | El plan exige Membership | Solo se reactivará tras disponer de licencia compatible y validar las consultas. No cuenta para cobertura ni vuelve incompleto un análisis. |
 | theHarvester | Ejecutable instalado en el mismo sistema donde corre FastAPI | `THEHARVESTER_BIN` inválido o cuota de un proveedor agotada | Por defecto consulta `certspotter,rapiddns,urlscan`; comprueba `THEHARVESTER_SOURCES` en el `.env` real. Cada proveedor conserva su estado y procedencia en el JSONL guardado. |
 | SpiderFoot | Servidor web activo en `SPIDERFOOT_URL` | `ConnectError`, tiempo máximo o cancelación | Inicia SpiderFoot antes del análisis y verifica la URL desde FastAPI. El backend usa los módulos de `SPIDERFOOT_MODULES` para acotar la duración; el grupo `Passive` completo puede ejecutar módulos lentos o defectuosos. Una cancelación solicita detener también el trabajo remoto. |
-| Web (histórica) | Fuera del flujo pasivo | La petición `HEAD /` y la negociación TLS son activas | Se conservan el adaptador y las observaciones históricas para auditoría. No se ejecuta ni aporta al Risk Score vigente. |
+| Web | `WEB_ACTIVE_ENABLED=true` y consentimiento por análisis | La petición `HEAD /` y la negociación TLS son activas | Solo FQDN principal autorizado en 80/443. Sin conclusión no produce hallazgos. |
 
 ### Qué puede comprobar crt.sh
 
@@ -85,11 +84,10 @@ La respuesta conserva proveedor, módulo, consulta, fecha, estado y limitaciones
 Los módulos DNS hacen consultas DNS o a proveedores públicos; ninguno visita el
 sitio web ni comprueba puertos o servicios.
 
-Los módulos opcionales `sfp_baxter_internetdb` y `sfp_baxter_shodan` solo
-aceptan IPs públicas que ya estén en el inventario y en el alcance explícito.
-InternetDB queda deshabilitado hasta declarar `noncommercial` o `licensed` en
-`spiderfoot.env`; Shodan queda deshabilitado hasta proporcionar una clave con
-acceso a Host. Para activarlos también hay que agregarlos a
+El módulo opcional `sfp_baxter_internetdb` solo acepta IPs públicas que ya
+estén en el inventario y en el alcance explícito. InternetDB queda deshabilitado
+hasta declarar `noncommercial` o `licensed` en `spiderfoot.env`. Para activarlo
+también hay que agregarlo a
 `SPIDERFOOT_MODULES`. Un proveedor deshabilitado, una respuesta HTTP fallida o
 un resultado truncado se registra como limitación y nunca como cero válido.
 
@@ -99,12 +97,11 @@ módulos que contactan al objetivo. Los módulos DNS anteriores y el perfil prev
 se reconocen como configuración heredada y se amplían automáticamente con DNS
 DoH y urlscan al arrancar el backend.
 
-Web usaba `asyncio`, `socket` y `ssl` de Python para abrir conexiones TCP y
-enviar `HEAD /` por HTTP y HTTPS al host; no era una herramienta OSINT externa.
-Sus reglas CONF-006/007/008 están inactivas. Los hallazgos históricos se
-conservan, pero un recálculo los marca `retirado_del_riesgo` y excluye su
-aporte. El dominio raíz y los subdominios registrados siguen entrando en el
-análisis pasivo, sujetos a `SCAN_MAX_TARGETS`.
+Web usa `asyncio`, `socket` y `ssl` para comprobar el FQDN principal autorizado.
+La evidencia nueva se marca como comprobación activa; observaciones antiguas no
+se convierten en confirmaciones al recalcular. Las reglas CONF-006/007/008
+respetan su estado y peso actuales en el catálogo. El análisis pasivo sigue
+sujeto a `SCAN_MAX_TARGETS`.
 
 Los cambios de `.env` requieren reiniciar Uvicorn. El valor de
 `THEHARVESTER_BIN` es una ruta del **equipo que ejecuta FastAPI**; una ruta
@@ -112,5 +109,4 @@ Los cambios de `.env` requieren reiniciar Uvicorn. El valor de
 forman parte de las dependencias de `backend/pyproject.toml`.
 
 Enlace a las instrucciones oficiales: [theHarvester](https://github.com/laramies/theHarvester/blob/master/docs/wiki/Installation.md),
-[SpiderFoot](https://github.com/smicallef/spiderfoot/blob/master/Dockerfile) y
-[API de Shodan](https://developer.shodan.io/api).
+[SpiderFoot](https://github.com/smicallef/spiderfoot/blob/master/Dockerfile).

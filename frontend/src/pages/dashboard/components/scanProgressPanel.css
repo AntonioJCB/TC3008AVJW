@@ -24,9 +24,9 @@
 .scan-chart-heading h3 { margin: 0 0 3px; font-size: 18px; }
 .scan-chart-heading > span { color: var(--meta); font-size: 11px; font-weight: 700; letter-spacing: .07em; white-space: nowrap; }
 .scan-timeline { display: grid; gap: 12px; }
-.scan-timeline-row { display: grid; grid-template-columns: minmax(130px, 190px) minmax(120px, 1fr) minmax(140px, 230px); align-items: center; gap: 16px; }
+.scan-timeline-row { display: grid; grid-template-columns: minmax(145px, 1fr) minmax(120px, 2fr) minmax(170px, 1.4fr); align-items: center; gap: 12px; min-width: 0; }
 .scan-source-heading { align-items: center; gap: 8px; min-width: 0; }
-.scan-source-heading strong { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.scan-source-heading strong { min-width: 0; font-size: 14px; overflow-wrap: anywhere; }
 .scan-source-state { padding: 4px 7px; border-radius: 100px; font-size: 11px; white-space: nowrap; }
 .scan-source-state.done { color: var(--teal); background: color-mix(in srgb, var(--teal) 12%, transparent); }
 .scan-source-state.partial { color: var(--bronze); background: color-mix(in srgb, var(--bronze) 13%, transparent); }
@@ -40,7 +40,7 @@
 .scan-source-fill.running { background: linear-gradient(90deg, var(--bronze), color-mix(in srgb, var(--bronze) 55%, white)); }
 .scan-source-facts { justify-content: space-between; gap: 9px; min-width: 0; color: var(--muted); font-size: 12px; }
 .scan-source-facts span:first-child { color: var(--ink); font-weight: 650; white-space: nowrap; }
-.scan-source-facts span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scan-source-facts span:last-child { min-width: 0; overflow-wrap: anywhere; }
 @media (max-width: 1050px) { .scan-timeline-row { grid-template-columns: minmax(120px, 170px) minmax(120px, 1fr); } .scan-source-facts { grid-column: 2; margin-top: -10px; } }
 @media (max-width: 700px) { .scan-progress-header { flex-direction: column; } .scan-progress-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .scan-timeline-row { grid-template-columns: 1fr; gap: 7px; padding: 10px 0; border-bottom: 1px solid var(--line-soft); } .scan-source-facts { grid-column: auto; margin: 0; } .scan-chart-heading { align-items: flex-start; flex-direction: column; } }
 @media (prefers-reduced-motion: reduce) { .scan-overall-track span, .scan-source-fill { transition: none; } }

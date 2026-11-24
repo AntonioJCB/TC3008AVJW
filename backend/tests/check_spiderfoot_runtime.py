@@ -23,7 +23,6 @@ results = []
 for provider, target, options, response in [
     ('urlscan', 'api.example.com', {}, {'results': [{'page': {'domain': 'api.example.com', 'server': 'FixtureServer/1.0'}, 'task': {'time': '2026-11-01T00:00:00Z'}}]}),
     ('internetdb', '8.8.8.8', {'use': 'noncommercial'}, {'ip': '8.8.8.8', 'ports': [22], 'cpes': ['cpe:/a:fixture:product:1.0'], 'vulns': ['CVE-2024-12345']}),
-    ('shodan', '8.8.8.8', {'api_key': 'fixture-key'}, {'ip_str': '8.8.8.8', 'data': [{'port': 5432, 'transport': 'tcp', 'timestamp': '2026-11-01T00:00:00Z', 'product': 'FixtureDB', 'version': '1.0', 'vulns': {'CVE-2024-12345': {'verified': True}}}]}),
 ]:
     name = 'sfp_baxter_' + provider
     plugin = getattr(loaded[name], name)()

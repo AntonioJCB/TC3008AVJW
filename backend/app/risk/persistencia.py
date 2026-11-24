@@ -236,6 +236,7 @@ def _consolidar_hallazgos(
             continue
         evidencia = dict(row.get("evidencia") or {})
         if (evidencia.get("retirado_del_riesgo") is True
+                or regla.codigo in {"CONF-001", "CONF-002", "CONF-006", "CONF-008"}
                 or regla.codigo == "CONF-007"
                 or (regla.codigo in POTENTIAL_ONLY_RISK_RULES and evidencia.get("nivel_evidencia") != "potencial")):
             continue
@@ -318,11 +319,18 @@ def calcular_y_guardar(client: Any, scan_id: str, ahora: datetime | None = None,
         [obs for obs in cargar_observaciones(client, scan_id)
          if obs.fuente in ACTIVE_SOURCES and obs.activo_id not in sinteticos], scope
     )
-    # La política impide puntuar Web aunque el catálogo remoto aún no se haya actualizado.
-    reglas = [replace(regla, esta_activa=False) if regla.codigo in RETIRED_RISK_RULES else regla
-              for regla in cargar_reglas(client)]
+    source_states = cargar_estado_fuentes(client, scan_id)
+    active_web_evidence = source_states.get("Web") in {"completado", "parcial"} and any(
+        obs.fuente == "Web" and obs.datos.get("comprobacion_activa") is True
+        for obs in observaciones
+    )
+    # El catálogo conserva pesos y estado. Solo esta ejecución autorizada activa
+    # los evaluadores Web con evidencia actual; CT histórico permanece retirado.
+    reglas = [replace(regla, esta_activa=False) if regla.codigo in RETIRED_RISK_RULES
+              else replace(regla, esta_activa=True) if active_web_evidence and regla.codigo in {"CONF-006", "CONF-007", "CONF-008"} and regla.peso > 0
+              else regla for regla in cargar_reglas(client)]
     resultado = evaluar_riesgo(
-        observaciones, reglas, cargar_estado_fuentes(client, scan_id), ahora
+        observaciones, reglas, source_states, ahora
     )
     anterior_id, anteriores = (None, []) if historico_anterior else _hallazgos_previos(client, scan_id)
     anteriores = [row for row in anteriores

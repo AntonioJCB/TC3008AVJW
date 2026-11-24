@@ -21,11 +21,12 @@ def resultados(**estados):
 class EstadoDelEscaneoTests(unittest.TestCase):
     def test_crtsh_deshabilitado_no_impide_completar_fuentes_habilitadas(self):
         rows = {"crt.sh": {"estado": "deshabilitado", "error": "Fuente deshabilitada temporalmente: CT"},
-                "theHarvester": OK, "SpiderFoot": OK}
+                "theHarvester": OK, "SpiderFoot": OK,
+                "Web": {"estado": "deshabilitado", "error": "Fuente deshabilitada temporalmente: sin consentimiento"}}
         self.assertEqual(compute_scan_state(rows), "completado")
         message = scan_message("completado", rows)
         self.assertIn("2 fuentes habilitadas", message)
-        self.assertIn("Deshabilitadas/no evaluadas: crt.sh", message)
+        self.assertIn("Deshabilitadas/no evaluadas: crt.sh, Web", message)
 
     def test_todas_bien_es_completado(self):
         self.assertEqual(compute_scan_state({n: OK for n in SOURCE_NAMES}), "completado")
@@ -33,10 +34,10 @@ class EstadoDelEscaneoTests(unittest.TestCase):
     def test_una_falla_es_incompleto(self):
         self.assertEqual(compute_scan_state({**{n: OK for n in SOURCE_NAMES}, "theHarvester": KO}), "incompleto")
 
-    def test_shodan_desactivado_no_altera_el_estado(self):
-        self.assertNotIn("Shodan", SOURCE_NAMES)
-        self.assertNotIn("Web", SOURCE_NAMES)
-        self.assertEqual(compute_scan_state({**{n: OK for n in SOURCE_NAMES}, "Shodan": KO}), "completado")
+    def test_web_opcional_no_altera_estado_si_no_se_ejecuta(self):
+        self.assertIn("Web", SOURCE_NAMES)
+        rows = {**{n: OK for n in SOURCE_NAMES}, "Web": {"estado": "deshabilitado", "error": "Fuente deshabilitada temporalmente: sin consentimiento"}}
+        self.assertEqual(compute_scan_state(rows), "completado")
 
     def test_tres_fallan_sigue_siendo_incompleto(self):
         r = {n: KO for n in SOURCE_NAMES}
@@ -106,10 +107,10 @@ class ExecuteTests(unittest.TestCase):
 
 class RunScanJobTests(unittest.IsolatedAsyncioTestCase):
     SETTINGS = SimpleNamespace(
-        shodan_api_key=None, theharvester_bin="x", theharvester_sources="x", spiderfoot_url="http://x",
+        web_enabled=False, theharvester_bin="x", theharvester_sources="x", spiderfoot_url="http://x",
         spiderfoot_modules="sfp_dnsresolve,sfp_dnsraw,sfp_robtex,sfp_crobat_api",
         request_timeout_seconds=1, process_timeout_seconds=1, spiderfoot_timeout_seconds=1, spiderfoot_poll_seconds=1,
-        scan_timeout_seconds=5, crtsh_retries=1, crtsh_timeout_seconds=60, shodan_max_ips=1, shodan_pause_seconds=0,
+        scan_timeout_seconds=5, crtsh_retries=1, crtsh_timeout_seconds=60,
     )
     SCAN = {"id": "scan-1", "organizacion_id": "org-1"}
     IDS = {n: f"id-{n}" for n in SOURCE_NAMES}
@@ -211,6 +212,7 @@ class RunScanJobTests(unittest.IsolatedAsyncioTestCase):
         outcomes = {
             "theHarvester": {"estado": "completado", "error": None, "contenido": {"items": [1, 2, 3]}, "consultas": []},
             "SpiderFoot": {"estado": "completado", "error": None, "contenido": [], "consultas": []},
+            "Web": {"estado": "completado", "error": None, "contenido": [], "consultas": []},
         }
 
         async def collect(_domain, _settings, *, on_result, **_options):
@@ -241,12 +243,12 @@ class RunScanJobTests(unittest.IsolatedAsyncioTestCase):
     async def test_una_falla_las_otras_se_guardan_y_queda_incompleto(self):
         estado, persist, finish, riesgo = await self.correr({**{n: "ok" for n in SOURCE_NAMES}, "theHarvester": "ko"})
         self.assertEqual(estado, "incompleto")
-        self.assertEqual(persist.call_count, len(SOURCE_NAMES))  # también se registra la que falló
+        self.assertEqual(persist.call_count, len(SOURCE_NAMES))
         self.assertEqual(finish.call_args.args[2], "incompleto")
         detalle = self.auditoria.call_args.kwargs["detail"]
         self.assertEqual(self.auditoria.call_args.kwargs["action"], "escaneo_finalizado")
         self.assertEqual(list(detalle["fuentes_fallidas"]), ["theHarvester"])
-        self.assertEqual(detalle["fuentes_ok"], ["crt.sh", "SpiderFoot"])
+        self.assertEqual(detalle["fuentes_ok"], ["crt.sh", "SpiderFoot", "Web"])
 
     async def test_todas_fallan_es_fallido_pero_igual_se_calcula_el_riesgo_parcial(self):
         estado, _, finish, riesgo = await self.correr({n: "ko" for n in SOURCE_NAMES})

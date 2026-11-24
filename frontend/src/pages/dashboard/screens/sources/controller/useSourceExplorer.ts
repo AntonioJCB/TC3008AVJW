@@ -8,7 +8,7 @@ function normalize(value: string) {
 export function useSourceExplorer() {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<SourceFilter>('all')
-  const [selectedId, setSelectedId] = useState('shodan')
+  const [selectedId, setSelectedId] = useState('crt')
 
   const searchedSources = useMemo(() => {
     const term = normalize(query.trim())

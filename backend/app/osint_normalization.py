@@ -297,138 +297,6 @@ def _adapt_crtsh(raw: Any, domain: str) -> dict[str, Any]:
     return result
 
 
-def _shodan_hosts(raw: Any) -> list[Any]:
-    if isinstance(raw, dict) and isinstance(raw.get("matches"), list):
-        return raw["matches"]
-    return raw if isinstance(raw, list) else [raw]
-
-
-def _shodan_ip(host: dict[str, Any], result: dict[str, Any]) -> str | None:
-    ip = normalizar_ip(str(host.get("ip_str") or ""))
-    if ip is None:
-        _discard(result, "valor_invalido", host.get("ip_str", host.get("ip")))
-    return ip
-
-
-def _shodan_in_scope(host: dict[str, Any], ip: str, domain: str, known_ips: set[str]) -> bool:
-    for name in [*_list(host.get("hostnames")), *_list(host.get("domains"))]:
-        normalized = normalizar_dominio(name) if isinstance(name, str) else None
-        if normalized and clasificar_dominio(normalized[0], domain):
-            return True
-    return ip in known_ips
-
-
-def _add_shodan_host_facts(host: dict[str, Any], ip: str, result: dict[str, Any]) -> str | None:
-    observed_at = fecha_iso(host.get("last_update"))
-    info = {
-        key: value
-        for key, value in (("asn", host.get("asn")), ("organizacion", host.get("org")))
-        if value
-    }
-    facts = [{"atributo": "descubierto", "observado_en": observed_at}]
-    if info:
-        facts.append({"atributo": "info_host", "datos": info, "observado_en": observed_at})
-    _add_ip(result, ip, facts)
-    return observed_at
-
-
-def _add_shodan_host_cves(host: dict[str, Any], ip: str, observed_at: str | None, result: dict[str, Any]) -> None:
-    for cve in _list(host.get("vulns")):
-        if isinstance(cve, str) and REGEX_CVE.search(cve):
-            _add_ip(
-                result,
-                ip,
-                [{"atributo": "cve", "datos": {"cve": cve.upper(), "verificado": None}, "observado_en": observed_at}],
-            )
-
-
-def _add_shodan_hostnames(
-    host: dict[str, Any], ip: str, domain: str, observed_at: str | None, result: dict[str, Any]
-) -> None:
-    facts = [
-        {"atributo": "descubierto", "observado_en": observed_at},
-        {"atributo": "resuelve_a", "datos": {"ip": ip}, "observado_en": observed_at},
-    ]
-    for hostname in _list(host.get("hostnames")):
-        _add_name(result, hostname, domain, facts)
-
-
-def _add_shodan_banner(
-    banner: Any, ip: str, observed_at: str | None, result: dict[str, Any]
-) -> None:
-    if not _object(banner):
-        return
-    try:
-        port = int(banner.get("port"))
-    except (TypeError, ValueError):
-        port = 0
-    protocol = banner.get("transport") if isinstance(banner.get("transport"), str) else "tcp"
-    banner_time = fecha_iso(banner.get("timestamp")) or observed_at
-    service = _add_service(
-        result,
-        ip,
-        port,
-        protocol,
-        [
-            {"atributo": "descubierto", "observado_en": banner_time},
-            {
-                "atributo": "servicio_expuesto",
-                "observado_en": banner_time,
-                "datos": {
-                    "producto": banner.get("product"),
-                    "version": banner.get("version"),
-                    "cpe": sorted(map(str, _list(banner.get("cpe")))),
-                },
-            },
-        ],
-    )
-    if service:
-        _add_shodan_service_cves(banner.get("vulns"), service, banner_time, result)
-
-
-def _add_shodan_service_cves(
-    vulnerabilities: Any, service: str, observed_at: str | None, result: dict[str, Any]
-) -> None:
-    if not _object(vulnerabilities):
-        return
-    for cve_id, detail in vulnerabilities.items():
-        if REGEX_CVE.search(cve_id):
-            _observation(
-                result,
-                "servicio",
-                service,
-                "cve",
-                {"cve": cve_id.upper(), "verificado": detail.get("verified") if _object(detail) else None},
-                observed_at,
-            )
-
-
-def _adapt_shodan(raw: Any, domain: str, in_scope_ips: list[str]) -> dict[str, Any]:
-    result = _new_result()
-    known_ips = {address for item in in_scope_ips if (address := normalizar_ip(item))}
-    for host in _shodan_hosts(raw):
-        if not _object(host):
-            _format_error(result, "un objeto host", host)
-            continue
-        ip = _shodan_ip(host, result)
-        if ip is None:
-            continue
-        if not _shodan_in_scope(host, ip, domain, known_ips):
-            _discard(result, "fuera_de_alcance", ip)
-            continue
-        observed_at = _add_shodan_host_facts(host, ip, result)
-        _add_shodan_host_cves(host, ip, observed_at, result)
-        _add_shodan_hostnames(host, ip, domain, observed_at, result)
-        banners = _list(host.get("data"))
-        if not banners and "port" in host:
-            # /shodan/host/search devuelve un banner por entrada ("port" al nivel
-            # superior y "data" como texto); /shodan/host/{ip} trae data[] de banners.
-            banners = [host]
-        for banner in banners:
-            _add_shodan_banner(banner, ip, observed_at, result)
-    return result
-
-
 def _add_harvester_host(entry: Any, domain: str, result: dict[str, Any], sources: list[str] | None = None) -> None:
     if not isinstance(entry, str):
         _discard(result, "valor_invalido", entry)
@@ -651,7 +519,7 @@ def _adapt_web(raw: Any, domain: str) -> dict[str, Any]:
         return _format_error(result, "un arreglo de comprobaciones", raw)
     checks = {"tls_verificado", "tls_por_expirar", "tls_invalido", "http_sin_redireccion"}
     for event in raw:
-        if not isinstance(event, dict) or event.get("check") not in checks:
+        if not isinstance(event, dict) or event.get("check") not in checks or event.get("validation_mode") != "active-authorized-v1":
             _discard(result, "valor_invalido", event)
             continue
         host = event.get("host")
@@ -659,13 +527,13 @@ def _adapt_web(raw: Any, domain: str) -> dict[str, Any]:
             _discard(result, "valor_invalido", event)
             continue
         data = {key: value for key, value in event.items() if key != "host"}
+        data["comprobacion_activa"] = True
         _add_name(result, host, domain, [{"atributo": "info_host", "datos": data}])
     return result
 
 
 ADAPTERS = {
     "crt.sh": _adapt_crtsh,
-    "Shodan": _adapt_shodan,
     "theHarvester": _adapt_harvester,
     "SpiderFoot": _adapt_spiderfoot,
     "Web": _adapt_web,
@@ -683,10 +551,7 @@ def adaptar(
     canonical_domain = normalizar_dominio(domain)
     if canonical_domain is None:
         raise ValueError("Dominio principal inválido")
-    if source == "Shodan":
-        result = _adapt_shodan(raw, canonical_domain[0], in_scope_ips or [])
-    else:
-        result = ADAPTERS[source](raw, canonical_domain[0])
+    result = ADAPTERS[source](raw, canonical_domain[0])
     return {
         "observaciones": deduplicar_local(result["observaciones"]),
         "descartadas": result["descartadas"],

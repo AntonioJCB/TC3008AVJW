@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { relationCanvas, relationEdges, relationNodes, type PriorityRoute, type RelationEdge, type RelationNode } from '../services/relationsMock'
 import { useRelationGraphNavigation } from '../controller/useRelationGraphNavigation'
 import RelationGraphControls from './RelationGraphControls'
@@ -9,14 +10,18 @@ interface RelationGraphProps {
   onReset: () => void
   nodes?: RelationNode[]
   edges?: RelationEdge[]
+  omittedCount?: number
+  showAll?: boolean
 }
 
-export default function RelationGraph({ selectedNodeId, selectedRoute, onSelectNode, onReset, nodes = relationNodes, edges = relationEdges }: RelationGraphProps) {
-  const { viewportRef, canvas, view, dragging, zoomPercent, canZoomIn, canZoomOut, zoomIn, zoomOut, fitGraph, onPointerDown, onPointerMove, onPointerEnd, onKeyDown } = useRelationGraphNavigation(relationCanvas)
+export default function RelationGraph({ selectedNodeId, selectedRoute, onSelectNode, onReset, nodes = relationNodes, edges = relationEdges, omittedCount = 0, showAll = false }: RelationGraphProps) {
+  const canvasSize = useMemo(() => showAll ? { width: 1600, height: Math.max(720, 300 + Math.ceil(Math.max(0, nodes.length - 1) / 4) * 160) } : relationCanvas, [nodes.length, showAll])
+  const { viewportRef, canvas, view, dragging, zoomPercent, canZoomIn, canZoomOut, zoomIn, zoomOut, fitGraph, onPointerDown, onPointerMove, onPointerEnd, onKeyDown } = useRelationGraphNavigation(canvasSize)
   const nodeById = new Map(nodes.map((node) => [node.id, node]))
 
   return <section className="content-card relation-graph-card" aria-label="Grafo de exposición">
     <div className="relation-graph-toolbar">
+      <p className="relation-map-caption">{showAll ? 'Inventario completo' : 'Vista de enfoque'} · {nodes.length} nodos visibles{omittedCount > 0 ? ` · ${omittedCount} fuera de vista` : ''}</p>
       <div className="relation-legend" aria-label="Leyenda del grafo">
         <span><i className="tone-domain" />Dominio</span><span><i className="tone-service" />Servicio</span><span><i className="tone-identity" />Identidad</span><span><i className="tone-critical" />Ruta crítica</span>
       </div>
@@ -40,6 +45,7 @@ export default function RelationGraph({ selectedNodeId, selectedRoute, onSelectN
           className={`relation-node tone-${node.tone}${node.id === 'root' ? ' root' : ''}${node.id === selectedNodeId ? ' selected' : ''}`}
           style={{ left: `${node.x}%`, top: `${node.y}%` }}
           aria-pressed={node.id === selectedNodeId}
+          title={`${node.name} · ${node.caption}${node.sources.length ? ` · ${node.sources.join(', ')}` : ''}`}
           onClick={() => onSelectNode(node.id)}
         ><span>{node.badge}</span><strong>{node.name}</strong><small>{node.caption}</small>{node.sources.length > 0 && <small className="relation-node-source">{node.sources.join(' · ')}</small>}</button>)}
       </div>

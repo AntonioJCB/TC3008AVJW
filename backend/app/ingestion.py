@@ -150,13 +150,13 @@ def ingestar_resultado(
         adapted = adaptar(source, raw, domain, ips_in_scope)
         observations = adapted["observaciones"]
         enriched: list[dict[str, Any]] = []
-        if nvd_api_key and source in {"Shodan", "SpiderFoot"}:
+        if nvd_api_key and source == "SpiderFoot":
             try:
                 enriched.extend(enrich_observations(observations, nvd_api_key, source))
             except (HTTPError, OSError, TypeError, ValueError):
                 # NVD enriquece; una incidencia suya no invalida la evidencia OSINT original.
                 logger.warning("No se pudo enriquecer %s con NVD", source, exc_info=True)
-        if source in {"Shodan", "SpiderFoot"}:
+        if source == "SpiderFoot":
             try:
                 enriched.extend(enrich_observations_osv(observations, source))
             except (HTTPError, OSError, TypeError, ValueError):

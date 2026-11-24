@@ -40,17 +40,17 @@ class SettingsTests(unittest.TestCase):
                     Settings.from_environment()
                 self.assertNotIn(key, str(error.exception))
 
-    def test_shodan_placeholder_is_not_treated_as_configured(self) -> None:
+    def test_web_requires_explicit_server_enablement(self) -> None:
         with patch.dict(
             os.environ,
             {
                 "SUPABASE_URL": "https://example.supabase.co",
                 "SUPABASE_SERVICE_ROLE_KEY": "server-secret",
-                "SHODAN_API_KEY": "replace-with-shodan-api-key",
+                "WEB_ACTIVE_ENABLED": "false",
             },
             clear=True,
         ):
-            self.assertIsNone(Settings.from_environment().shodan_api_key)
+            self.assertFalse(Settings.from_environment().web_enabled)
 
     def test_service_role_placeholder_is_rejected(self) -> None:
         with patch.dict(

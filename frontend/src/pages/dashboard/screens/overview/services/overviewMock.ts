@@ -51,7 +51,6 @@ export const sourceHealth = [
   { name: 'crt.sh', status: 'Saludable', tone: 'healthy' },
   { name: 'SpiderFoot', status: 'Saludable', tone: 'healthy' },
   { name: 'theHarvester', status: 'Saludable', tone: 'healthy' },
-  { name: 'Shodan', status: 'Parcial', tone: 'partial' },
 ] as const
 
 export const recentMilestones = [

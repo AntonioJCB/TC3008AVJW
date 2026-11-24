@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class OrchestratorSettings:
-    shodan_api_key: str | None = None
+    web_enabled: bool = True
     theharvester_bin: str = "theHarvester"
     theharvester_sources: str = "certspotter,hackertarget,rapiddns,urlscan"
     spiderfoot_url: str = "http://127.0.0.1:5001"
@@ -41,8 +41,6 @@ class OrchestratorSettings:
     spiderfoot_timeout_seconds: float = 1800
     spiderfoot_poll_seconds: float = 3
     crtsh_retries: int = 2
-    shodan_max_ips: int = 10
-    shodan_pause_seconds: float = 1.1
     crtsh_timeout_seconds: float = 15
     crtsh_total_timeout_seconds: float = 45
     crtsh_enabled: bool = True
@@ -226,6 +224,8 @@ async def run_all(
         "theHarvester": harvester_runner,
         "SpiderFoot": lambda target: run_spiderfoot(target, settings),
     }
+    if settings.web_enabled:
+        default_runners["Web"] = lambda target: run_web(target, settings)
     if settings.crtsh_enabled:
         default_runners = {
             "crt.sh": lambda target: run_crtsh(target, settings, include_subdomains=target == domain),
@@ -333,7 +333,7 @@ async def run_all(
                     else:
                         outputs.append(output)
                         successes.append(True)
-                    queries.append({"objetivo": target, "estado": "fallido" if isinstance(output, RunnerOutput) and output.failed else "parcial" if isinstance(output, RunnerOutput) and output.error else "completado", "metodo": "consulta de fuente", "error": output.error if isinstance(output, RunnerOutput) else None})
+                    queries.append({"objetivo": target, "estado": "fallido" if isinstance(output, RunnerOutput) and output.failed else "parcial" if isinstance(output, RunnerOutput) and output.error else "completado", "metodo": "validación técnica 80/443" if name == "Web" else "consulta de fuente", "error": output.error if isinstance(output, RunnerOutput) else None})
                     if (name == "crt.sh" and target == domain and isinstance(outputs[-1], dict)
                             and outputs[-1].get("version") == 1):
                         suffix_ok = any(
@@ -435,7 +435,9 @@ async def run_crtsh(
     domain: str, settings: OrchestratorSettings, *, include_subdomains: bool = True,
 ) -> RunnerOutput:
     """Consulta el nombre exacto y, en la raíz, también todos sus subdominios."""
-    queries = [f"%.{domain}", domain] if include_subdomains else [domain]
+    # El nombre exacto se consulta primero: si la búsqueda wildcard recibe
+    # 429/5xx, los certificados ya obtenidos siguen disponibles.
+    queries = [domain, f"%.{domain}"] if include_subdomains else [domain]
     report: list[dict[str, Any]] = []
     entries: list[dict[str, Any]] = []
     errors: list[str] = []
@@ -455,7 +457,8 @@ async def run_crtsh(
                 report.append({"query": query, "status": "error", "entries": 0,
                                "error": reason, "checked_at": checked_at})
     return RunnerOutput(
-        {"version": 1, "entries": entries, "queries": report, "covered_targets": [domain]},
+        {"version": 1, "entries": entries, "queries": report,
+         "covered_targets": [domain] if any(item["status"] == "ok" for item in report) else []},
         error="; ".join(errors)[:1000] if errors else None,
         failed=not any(item["status"] == "ok" for item in report),
     )
@@ -463,67 +466,7 @@ async def run_crtsh(
 
 async def run_web(domain: str, settings: OrchestratorSettings) -> RunnerOutput:
     events, errors = await inspect_host(domain, timeout=min(settings.request_timeout_seconds, 10))
-    return RunnerOutput(events, error="; ".join(errors) if errors else None)
-
-
-async def _shodan_get(
-    client: httpx.AsyncClient, path: str, params: dict[str, str], settings: OrchestratorSettings
-) -> Any:
-    """GET a la API de Shodan. 404 = Shodan no tiene datos de ese recurso."""
-    response = await client.get(
-        f"https://api.shodan.io{path}", params={**params, "key": settings.shodan_api_key}
-    )
-    if response.status_code == 404:
-        return None
-    if response.status_code == 403:
-        try:
-            reason = response.json().get("error", "")
-        except (ValueError, AttributeError):
-            reason = ""
-        if isinstance(reason, str) and "membership" in reason.lower():
-            raise RuntimeError(
-                "El plan de Shodan requiere Membership o superior para consultar DNS y hosts"
-            )
-    response.raise_for_status()  # el mensaje de error nunca incluye la URL con la llave
-    return response.json()
-
-
-async def run_shodan(domain: str, settings: OrchestratorSettings) -> RunnerOutput:
-    """Puertos y servicios de las IPs del dominio.
-
-    Usa /dns/resolve y /shodan/host/{ip}. No usa /shodan/host/search con el
-    filtro `hostname:` porque las búsquedas con filtros exigen un plan de pago.
-    Shodan limita a ~1 petición por segundo.
-    """
-    if not settings.shodan_api_key:
-        raise RuntimeError("Falta configurar SHODAN_API_KEY")
-
-    direct_ip = normalizar_ip(domain)
-    if direct_ip:
-        async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
-            host = await _shodan_get(client, f"/shodan/host/{direct_ip}", {}, settings)
-        return RunnerOutput([host] if host is not None else [], (direct_ip,))
-
-    async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
-        resolved = await _shodan_get(client, "/dns/resolve", {"hostnames": domain}, settings)
-        if resolved is not None and not isinstance(resolved, dict):
-            raise ValueError("Shodan devolvió un formato inesperado en /dns/resolve")
-
-        ips: list[str] = []
-        for value in (resolved or {}).values():
-            ip = normalizar_ip(value) if isinstance(value, str) else None
-            if ip and ip not in ips:
-                ips.append(ip)
-        ips = ips[: max(0, settings.shodan_max_ips)]
-
-        hosts: list[Any] = []
-        for index, ip in enumerate(ips):
-            if index:
-                await _sleep(settings.shodan_pause_seconds)
-            host = await _shodan_get(client, f"/shodan/host/{ip}", {}, settings)
-            if host is not None:
-                hosts.append(host)
-    return RunnerOutput(hosts, tuple(ips))
+    return RunnerOutput(events, error="; ".join(errors) if errors else None, failed=bool(errors and not events))
 
 
 async def run_theharvester(domain: str, settings: OrchestratorSettings) -> Any:

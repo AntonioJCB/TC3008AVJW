@@ -103,13 +103,13 @@ class RunAllTests(unittest.IsolatedAsyncioTestCase):
                 ]
             return []
 
-        async def shodan(target: str):
+        async def ip_source(target: str):
             consulted.append(target)
             return []
 
         await run_all(
             "example.com", OrchestratorSettings(),
-            runners={"SpiderFoot": spiderfoot, "Shodan": shodan},
+            runners={"SpiderFoot": spiderfoot, "FuenteIP": ip_source},
             targets=["example.com"], max_targets=3, ip_scope="example.com, 8.8.8.8",
         )
         self.assertIn("8.8.8.8", consulted)
@@ -162,8 +162,8 @@ class RunAllTests(unittest.IsolatedAsyncioTestCase):
             consulted.append(("crt.sh", target))
             return [{"name_value": target}]
 
-        async def shodan(target: str):
-            consulted.append(("Shodan", target))
+        async def ip_source(target: str):
+            consulted.append(("FuenteIP", target))
             if target.startswith("api."):
                 raise RuntimeError("límite del proveedor")
             return RunnerOutput([{"ip_str": "198.51.100.7"}], ("198.51.100.7",))
@@ -178,19 +178,19 @@ class RunAllTests(unittest.IsolatedAsyncioTestCase):
 
         results = await run_all(
             "example.com", OrchestratorSettings(),
-            runners={"crt.sh": crtsh, "Shodan": shodan, "theHarvester": harvester, "SpiderFoot": spiderfoot},
+            runners={"crt.sh": crtsh, "FuenteIP": ip_source, "theHarvester": harvester, "SpiderFoot": spiderfoot},
             targets=["example.com", "api.example.com", "8.8.8.8"],
         )
         self.assertEqual(consulted.count(("crt.sh", "example.com")), 1)
         self.assertIn(("crt.sh", "api.example.com"), consulted)
         self.assertEqual([row for row in consulted if row[0] == "theHarvester"], [("theHarvester", "example.com"), ("theHarvester", "api.example.com")])
         self.assertNotIn(("theHarvester", "8.8.8.8"), consulted)
-        self.assertIn(("Shodan", "8.8.8.8"), consulted)
+        self.assertIn(("FuenteIP", "8.8.8.8"), consulted)
         self.assertEqual(results["theHarvester"]["contenido"]["hosts"], ["example.com", "api.example.com"])
         self.assertEqual(len(results["SpiderFoot"]["contenido"]), 3)
-        self.assertEqual(results["Shodan"]["estado"], "completado")
-        self.assertEqual(results["Shodan"]["ips_en_alcance"], ["198.51.100.7"])
-        self.assertIn("api.example.com", results["Shodan"]["error"])
+        self.assertEqual(results["FuenteIP"]["estado"], "completado")
+        self.assertEqual(results["FuenteIP"]["ips_en_alcance"], ["198.51.100.7"])
+        self.assertIn("api.example.com", results["FuenteIP"]["error"])
 
     async def test_one_failure_does_not_cancel_other_sources(self) -> None:
         async def succeeds(domain: str) -> dict[str, str]:
@@ -204,15 +204,15 @@ class RunAllTests(unittest.IsolatedAsyncioTestCase):
             OrchestratorSettings(),
             runners={
                 "crt.sh": succeeds,
-                "Shodan": fails,
+                "FuenteIP": fails,
                 "theHarvester": succeeds,
                 "SpiderFoot": succeeds,
             },
         )
 
-        self.assertEqual(set(outcomes), {"crt.sh", "Shodan", "theHarvester", "SpiderFoot"})
-        self.assertEqual(outcomes["Shodan"]["estado"], "fallido")
-        self.assertIn("provider unavailable", outcomes["Shodan"]["error"])
+        self.assertEqual(set(outcomes), {"crt.sh", "FuenteIP", "theHarvester", "SpiderFoot"})
+        self.assertEqual(outcomes["FuenteIP"]["estado"], "fallido")
+        self.assertIn("provider unavailable", outcomes["FuenteIP"]["error"])
         for source in ("crt.sh", "theHarvester", "SpiderFoot"):
             self.assertEqual(outcomes[source]["estado"], "completado")
             self.assertEqual(outcomes[source]["contenido"], {"domain": "example.com"})
@@ -220,7 +220,7 @@ class RunAllTests(unittest.IsolatedAsyncioTestCase):
     async def test_provider_error_does_not_expose_query_credentials(self) -> None:
         async def fails(domain: str) -> None:
             request = httpx.Request(
-                "GET", "https://api.shodan.io/shodan/host/search?key=private-key"
+                "GET", "https://api.example.net/private?key=private-key"
             )
             response = httpx.Response(403, request=request)
             raise httpx.HTTPStatusError("request failed", request=request, response=response)
@@ -228,12 +228,12 @@ class RunAllTests(unittest.IsolatedAsyncioTestCase):
         outcomes = await run_all(
             "example.com",
             OrchestratorSettings(),
-            runners={"Shodan": fails},
+            runners={"FuenteIP": fails},
         )
 
-        self.assertEqual(outcomes["Shodan"]["estado"], "fallido")
-        self.assertIn("403", outcomes["Shodan"]["error"])
-        self.assertNotIn("private-key", outcomes["Shodan"]["error"])
+        self.assertEqual(outcomes["FuenteIP"]["estado"], "fallido")
+        self.assertIn("403", outcomes["FuenteIP"]["error"])
+        self.assertNotIn("private-key", outcomes["FuenteIP"]["error"])
 
 
 class ScanEndpointTests(unittest.TestCase):
@@ -332,7 +332,6 @@ class ScanEndpointTests(unittest.TestCase):
         self.addCleanup(main.app.dependency_overrides.clear)
 
         settings = SimpleNamespace(
-            shodan_api_key="test-key",
             theharvester_bin="theHarvester",
             theharvester_sources="crtsh,certspotter",
             spiderfoot_url="http://127.0.0.1:5001",
@@ -346,8 +345,6 @@ class ScanEndpointTests(unittest.TestCase):
             scan_max_targets=20,
             crtsh_retries=3,
             crtsh_timeout_seconds=60,
-            shodan_max_ips=10,
-            shodan_pause_seconds=1.1,
         )
         outcomes = {
             name: {

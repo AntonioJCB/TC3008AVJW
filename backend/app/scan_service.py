@@ -187,7 +187,7 @@ def scan_message(scan_state: str, results: Mapping[str, Mapping[str, Any]]) -> s
 
 def orchestrator_settings(settings: Settings) -> OrchestratorSettings:
     return OrchestratorSettings(
-        shodan_api_key=settings.shodan_api_key,
+        web_enabled=True,
         theharvester_bin=settings.theharvester_bin,
         theharvester_sources=settings.theharvester_sources,
         spiderfoot_url=settings.spiderfoot_url,
@@ -197,8 +197,6 @@ def orchestrator_settings(settings: Settings) -> OrchestratorSettings:
         spiderfoot_timeout_seconds=settings.spiderfoot_timeout_seconds,
         spiderfoot_poll_seconds=settings.spiderfoot_poll_seconds,
         crtsh_retries=settings.crtsh_retries,
-        shodan_max_ips=settings.shodan_max_ips,
-        shodan_pause_seconds=settings.shodan_pause_seconds,
         crtsh_timeout_seconds=settings.crtsh_timeout_seconds,
         crtsh_total_timeout_seconds=getattr(settings, "crtsh_total_timeout_seconds", 45),
         crtsh_enabled=getattr(settings, "crtsh_enabled", True),
@@ -412,11 +410,11 @@ async def run_scan_job(
     persisted: dict[str, dict[str, Any]] = {}
     outcomes = {}
     coverage = None
-    disabled_sources = (
-        {"crt.sh": CRTSH_DISABLED_REASON}
-        if runners is None and not getattr(settings, "crtsh_enabled", True)
-        else {}
-    )
+    disabled_sources = {}
+    if runners is None and not getattr(settings, "crtsh_enabled", True):
+        disabled_sources["crt.sh"] = CRTSH_DISABLED_REASON
+    if runners is not None and "Web" not in runners:
+        disabled_sources["Web"] = "Fuente deshabilitada temporalmente: no se proporcionó un ejecutor Web."
 
     async def on_result(name: str, outcome: dict[str, Any]) -> None:
         async with control.persistence_lock:
@@ -445,7 +443,8 @@ async def run_scan_job(
                 logger.exception("No se pudo registrar que %s está deshabilitada", name)
                 persisted[name] = {"estado": DISABLED_SOURCE_STATE, "error": reason}
         run_options = {
-            "runners": runners, "on_result": on_result,
+            "runners": runners,
+            "on_result": on_result,
             "timeout_seconds": settings.scan_timeout_seconds,
         }
         if targets is not None:
@@ -453,7 +452,8 @@ async def run_scan_job(
             run_options["max_targets"] = settings.scan_max_targets
             run_options["ip_scope"] = ip_scope
             run_options["excluded_targets"] = excluded_targets or {}
-        collectors = asyncio.create_task(run_all(domain, orchestrator_settings(settings), **run_options))
+        execution_settings = orchestrator_settings(settings)
+        collectors = asyncio.create_task(run_all(domain, execution_settings, **run_options))
         cancelled = asyncio.create_task(control.cancel_requested.wait())
         try:
             done, _ = await asyncio.wait({collectors, cancelled}, return_when=asyncio.FIRST_COMPLETED)
@@ -514,6 +514,7 @@ async def run_scan_job(
                     or (persisted.get(n, {}).get("error") and persisted.get(n, {}).get("estado") == COMPLETADO)
                 },
                 "fuentes_deshabilitadas": disabled_sources,
+                "validacion_web": "automatica_en_alcance_autorizado",
             },
         )
 

@@ -40,9 +40,9 @@ python -m uvicorn app.main:app --reload
 
 Configura `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` en `backend/.env`.
 La llave de servicio es solo para el servidor. SpiderFoot usa Google Public DNS
-DoH y urlscan de forma predeterminada; InternetDB y Shodan requieren la configuración explícita que se
-describe en [`docs/backend/spiderfoot-pasivo-20261118.md`](../docs/backend/spiderfoot-pasivo-20261118.md). Web no se ejecuta en
-el flujo OSINT pasivo y sus registros históricos permanecen disponibles.
+DoH y urlscan de forma predeterminada; InternetDB requiere declarar su modalidad
+de uso. Web requiere `WEB_ACTIVE_ENABLED=true` y consentimiento por análisis;
+solo comprueba el FQDN principal autorizado en 80/443.
 Los demás binarios y tiempos se configuran con las variables documentadas en
 `.env.example`. Define `CORS_ORIGINS` con los orígenes reales al desplegar y
 `FRONTEND_URL` con la dirección pública del frontend para que las invitaciones
@@ -51,8 +51,7 @@ redirijan a `/restablecer-clave`.
 theHarvester y SpiderFoot se instalan y arrancan por separado. En Windows,
 `THEHARVESTER_BIN` debe apuntar a un ejecutable local de Windows; no sirve una
 ruta `/Users/...` de macOS. SpiderFoot debe responder en `SPIDERFOOT_URL` antes
-de iniciar un análisis. Una clave de Shodan puede ser válida y aun así devolver
-403 si su plan no permite las rutas DNS y host. Consulta
+de iniciar un análisis. Consulta
 [`docs/backend/osint.md`](../docs/backend/osint.md) para diagnóstico.
 Para instalar las herramientas en contenedores de desarrollo, sigue
 [`docs/backend/docker-osint.md`](../docs/backend/docker-osint.md).

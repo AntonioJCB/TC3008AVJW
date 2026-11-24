@@ -2,7 +2,8 @@ import SpiderFootEvidence from '../../../components/SpiderFootEvidence'
 import { isCrtshReport, isHarvesterReport } from '../../../services/sourceReports'
 import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
-import { loadCrtshEvidence, loadSourceRawResult, type CrtshEvidence, type RawSourceResult, type Source, type SourceResult } from '../../../services/clientData'
+import { createPortal } from 'react-dom'
+import { loadCrtshEvidence, loadSourceRawResult, type CrtshEvidence, type RawSourceResult, type Source, type SourceResult, type TargetQuery } from '../../../services/clientData'
 
 type RawState =
   | { status: 'none' | 'loading'; value: null }
@@ -13,11 +14,12 @@ function dateTime(value: string | null | undefined) {
   return value ? new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—'
 }
 
-export default function LiveSourceLogDialog({ source, result, statusLabel, duration, onClose }: {
+export default function LiveSourceLogDialog({ source, result, statusLabel, duration, queries = [], onClose }: {
   source: Source
   result: SourceResult | null
   statusLabel: string
   duration: string
+  queries?: TargetQuery[]
   onClose: () => void
 }) {
   const dialogRef = useRef<HTMLElement>(null)
@@ -26,6 +28,7 @@ export default function LiveSourceLogDialog({ source, result, statusLabel, durat
   const [rawState, setRawState] = useState<RawState>(rawId ? { status: 'loading', value: null } : { status: 'none', value: null })
   const [crtEvidence, setCrtEvidence] = useState<CrtshEvidence | null>(null)
   const [crtEvidenceError, setCrtEvidenceError] = useState(false)
+  const statusTone = statusLabel === 'Saludable' ? 'healthy' : statusLabel === 'Parcial' ? 'partial' : statusLabel === 'Fallida' ? 'error' : statusLabel === 'Ejecutando' ? 'running' : 'disabled'
 
   useEffect(() => {
     if (!rawId) return
@@ -78,30 +81,35 @@ export default function LiveSourceLogDialog({ source, result, statusLabel, durat
     ? rawState.value.contenido : null
   const harvesterReport = source.nombre === 'theHarvester' && rawState.status === 'ready' && isHarvesterReport(rawState.value?.contenido)
     ? rawState.value.contenido : null
+  const webChecks = source.nombre === 'Web' && rawState.status === 'ready' && Array.isArray(rawState.value?.contenido)
+    ? rawState.value.contenido.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item)) : []
   const repeatedCrtRecords = crtReport
     ? crtReport.entries.length - new Set(crtReport.entries.map((entry) => JSON.stringify(entry))).size
     : 0
+  const successfulQueries = queries.filter(query => query.estado === 'completado').length
+  const failedQueries = queries.filter(query => query.estado === 'fallido' || query.estado === 'parcial').length
+  const errorCode = result?.error?.match(/HTTP\s+\d{3}|ReadTimeout|ConnectTimeout|TimeoutError|quota-exhausted/i)?.[0]
 
-  return <div className="source-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+  return createPortal(<div className="source-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <section ref={dialogRef} className="source-detail-dialog source-log-dialog" role="dialog" aria-modal="true" aria-labelledby="live-source-dialog-heading" aria-describedby="live-source-dialog-description">
-      <button ref={closeRef} type="button" className="source-dialog-close" aria-label="Cerrar registro" onClick={onClose}><X size={18} /></button>
-      <span className="source-panel-label">ÚLTIMO ANÁLISIS · REGISTRO DE FUENTE</span>
-      <h2 id="live-source-dialog-heading">{source.nombre}</h2>
-      {source.nombre === 'SpiderFoot' && rawState.status === 'ready' && <SpiderFootEvidence raw={rawState.value?.contenido} />}
-      <p id="live-source-dialog-description">Estado: <strong>{statusLabel}</strong> · Tipo de acceso: {source.tipo_acceso}</p>
+      <header className="source-dialog-header"><div><span className="source-panel-label">ÚLTIMO ANÁLISIS · REGISTRO DE FUENTE</span><h2 id="live-source-dialog-heading">{source.nombre}</h2><p id="live-source-dialog-description">Estado: <strong className={statusTone}>{statusLabel}</strong> · Tipo de acceso: {source.tipo_acceso}</p></div><button ref={closeRef} type="button" className="source-dialog-close" aria-label="Cerrar registro" onClick={onClose}><X size={18} /></button></header>
+      <div className="source-dialog-scroll">
+      <div className="source-log-overview"><strong className={statusTone}>{statusLabel}{errorCode ? ` · ${errorCode}` : ''}</strong><span>{result ? `${result.observaciones_generadas} observaciones recuperadas · ${duration}` : 'Sin ejecución registrada'}</span><p>{result?.error || (result ? 'Consulta terminada; los detalles y la evidencia están disponibles abajo.' : 'Esta fuente aún no tiene evidencia en el análisis seleccionado.')}</p></div>
+      {queries.length > 0 && <details className="source-log-section" open={Boolean(result?.error)}><summary>Consultas por objetivo · {successfulQueries} correctas · {failedQueries} con incidencias</summary><ul className="source-log-checks">{queries.map((query, index) => <li key={`${query.objetivo}-${index}`}><strong>{query.objetivo} · {query.estado}</strong><span>{query.metodo}{query.error ? ` · ${query.error}` : ''}</span></li>)}</ul></details>}
+      {result && <dl className="source-log-metrics"><div><dt>Duración</dt><dd>{duration}</dd></div><div><dt>Observaciones</dt><dd>{result.observaciones_generadas}</dd></div><div><dt>Nuevas / duplicadas</dt><dd>{result.observaciones_nuevas} / {result.observaciones_duplicadas}</dd></div><div><dt>Activos nuevos / existentes</dt><dd>{result.activos_nuevos} / {result.activos_existentes}</dd></div></dl>}
+      {source.nombre === 'Web' && <details className="source-log-section"><summary>Validaciones Web · {webChecks.length}</summary><p>Se comprueban nombres dentro del alcance autorizado en puertos 80/443. Un timeout no confirma un hallazgo.</p>{webChecks.length ? <ul className="source-log-checks">{webChecks.map((check, index) => <li key={`${String(check.host)}-${index}`}><strong>{String(check.host ?? 'Objetivo')} · {String(check.check ?? 'Comprobación')}</strong><span>{check.valid_until ? `Certificado hasta ${String(check.valid_until)}` : check.status ? `HTTP ${String(check.status)}` : check.verify_code ? `Código TLS ${String(check.verify_code)}` : 'Evidencia guardada'}</span></li>)}</ul> : <p>No hay comprobaciones concluyentes guardadas.</p>}</details>}
+      {source.nombre === 'SpiderFoot' && rawState.status === 'ready' && <details className="source-log-section"><summary>Desglose de SpiderFoot</summary><SpiderFootEvidence raw={rawState.value?.contenido} /></details>}
 
-      <div className="source-log-section">
-        <h3>Registro de ejecución</h3>
+      <details className="source-log-section"><summary>Registro de ejecución y errores</summary>
         {result ? <ol className="source-log-events">
           {result.iniciado_en && <li><time>{dateTime(result.iniciado_en)}</time><strong>Consulta iniciada</strong></li>}
           <li><time>{dateTime(result.finalizado_en ?? result.iniciado_en)}</time><strong>{result.estado === 'completado' ? (result.error ? 'Consulta parcial' : 'Consulta completada') : result.estado === 'fallido' ? 'Consulta fallida' : 'Estado actual: ' + result.estado}</strong><span>{result.error || `${result.observaciones_generadas} observaciones registradas.`}</span></li>
         </ol> : <p>No hay una ejecución registrada para esta fuente en el último análisis terminado.</p>}
-      </div>
+      </details>
 
       {result && <>
-        <dl className="source-log-metrics"><div><dt>Duración</dt><dd>{duration}</dd></div><div><dt>Observaciones</dt><dd>{result.observaciones_generadas}</dd></div><div><dt>Nuevas / duplicadas</dt><dd>{result.observaciones_nuevas} / {result.observaciones_duplicadas}</dd></div><div><dt>Activos nuevos / existentes</dt><dd>{result.activos_nuevos} / {result.activos_existentes}</dd></div></dl>
-        {crtReport && <div className="source-log-section">
-          <h3>Desglose de crt.sh</h3>
+        {crtReport && <details className="source-log-section">
+          <summary>Desglose de crt.sh</summary>
           <p>Se buscaron certificados publicados en Certificate Transparency. Esto descubre nombres y fechas históricas; no comprueba el certificado que sirve actualmente cada sitio.</p>
           <dl className="source-log-metrics"><div><dt>Registros recibidos</dt><dd>{crtReport.entries.length}</dd></div><div><dt>Registros idénticos consolidados</dt><dd>{repeatedCrtRecords}</dd></div><div><dt>Objetivos cubiertos</dt><dd>{crtReport.covered_targets?.length ?? 0}</dd></div></dl>
           <h3>Consultas realizadas</h3>
@@ -127,9 +135,9 @@ export default function LiveSourceLogDialog({ source, result, statusLabel, durat
               {typeof finding.evidencia?.aporte === 'number' && <span>Aporte calculado: {finding.evidencia.aporte}</span>}
             </li>)}</ul> : <p>No hay hallazgos de seguridad atribuibles a crt.sh en este análisis. Sus observaciones pueden ser informativas.</p>}
           </>}
-        </div>}
-        {harvesterReport && <div className="source-log-section">
-          <h3>Desglose de theHarvester</h3>
+        </details>}
+        {harvesterReport && <details className="source-log-section">
+          <summary>Desglose de theHarvester</summary>
           <p>{harvesterReport.runs.length} objetivos consultados · {harvesterReport.items.length} resultados recibidos</p>
           {harvesterReport.runs.map((run, index) => <div key={`${run.target}-${index}`}>
             <h3>{run.target}</h3>
@@ -141,7 +149,7 @@ export default function LiveSourceLogDialog({ source, result, statusLabel, durat
           {harvesterReport.items.length > 0 && <><h3>Resultados recibidos</h3><ul className="source-log-checks">{harvesterReport.items.map((item, index) => <li key={`${item.type}-${item.value}-${index}`}>
             <strong>{item.value}</strong><span>{item.type} · {item.sources.join(', ') || 'Proveedor sin atribución'}{item.targets?.length ? ` · consultado desde ${item.targets.join(', ')}` : ''}</span>
           </li>)}</ul></>}
-        </div>}
+        </details>}
         {discarded.length > 0 && <div className="source-log-section"><h3>Descartes al normalizar</h3><ul className="source-log-discards">{discarded.map(([reason, count]) => <li key={reason}><span>{reason.replaceAll('_', ' ')}</span><strong>{count}</strong></li>)}</ul></div>}
         <div className="source-log-section"><h3>Respuesta original</h3>
           {rawState.status === 'loading' && <p role="status">Cargando respuesta guardada…</p>}
@@ -150,6 +158,7 @@ export default function LiveSourceLogDialog({ source, result, statusLabel, durat
           {rawState.status === 'ready' && (rawState.value ? <details className="source-log-raw"><summary>Ver JSON recibido · {dateTime(rawState.value.observado_en)}</summary><pre>{rawText}</pre></details> : <p>No se encontró la respuesta guardada para esta ejecución.</p>)}
         </div>
       </>}
+      </div>
     </section>
-  </div>
+  </div>, document.body)
 }

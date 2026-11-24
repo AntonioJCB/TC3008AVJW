@@ -15,7 +15,6 @@ MODULES = {
     "sfp_baxter_commoncrawl": "common_crawl",
     "sfp_baxter_rdap": "rdap",
     "sfp_baxter_internetdb": "internetdb",
-    "sfp_baxter_shodan": "shodan",
 }
 PASSIVE_DNS_MODULES = ("sfp_dnsresolve", "sfp_dnsraw", "sfp_robtex", "sfp_crobat_api")
 LEGACY_MODULES = ",".join(PASSIVE_DNS_MODULES)
@@ -63,7 +62,7 @@ def selected_modules(target, configured=DEFAULT_MODULES):
         address = None
     if address and not address.is_global:
         raise ValueError("SpiderFoot solo admite IP públicas autorizadas")
-    ip_providers = {"internetdb", "shodan"}
+    ip_providers = {"internetdb"}
     domain_providers = {"urlscan", "google_dns_doh", "common_crawl", "rdap"}
     selected = [name for name in dict.fromkeys(names) if (
         name in MODULES and MODULES[name] in ip_providers if address
@@ -302,9 +301,6 @@ def collect(provider, target, fetch, *, api_key="", internetdb_use="disabled",
     report = {"profile": PROFILE, "provider": provider, "target": target,
               "status": "error", "query": "", "events": [], "results": 0,
               "checked_at": datetime.now(timezone.utc).isoformat(), "limitations": []}
-    if provider == "shodan" and not api_key:
-        report.update(status="unavailable", error="Falta una API key con acceso a Shodan Host")
-        return report
     if provider == "internetdb" and internetdb_use not in {"noncommercial", "licensed"}:
         report.update(status="unavailable", error="InternetDB requiere declarar uso no comercial o licencia comercial en la configuración del módulo")
         return report
@@ -340,8 +336,7 @@ def collect(provider, target, fetch, *, api_key="", internetdb_use="disabled",
             url, params = "https://internetdb.shodan.io/" + target, {}
             report["query"] = url
         else:
-            url, params = "https://api.shodan.io/shodan/host/" + target, {"key": api_key, "minify": "false"}
-            report["query"] = url
+            raise ValueError("Proveedor pasivo no admitido")
         code, data = fetch(url, params)
         report["http_status"] = code
         if provider == "internetdb" and code == 404 and isinstance(data, dict) and data.get("detail") == "No information available":
@@ -361,7 +356,7 @@ def collect(provider, target, fetch, *, api_key="", internetdb_use="disabled",
         elif provider == "internetdb":
             _internetdb(data, report)
         else:
-            _shodan(data, report)
+            raise ValueError("Proveedor pasivo no admitido")
         if report["status"] == "error":
             report["status"] = "ok" if report["results"] else "empty"
     except Exception:
@@ -1555,38 +1550,3 @@ def _internetdb(data, report):
     for cve in _strings(data.get("vulns", [])):
         if re.fullmatch(r"CVE-\d{4}-\d{4,}", cve, re.I):
             _event(report, "VULNERABILITY_CVE_UNKNOWN", cve, verificado=False)
-
-
-def _shodan(data, report):
-    if data.get("ip_str") != report["target"] or not isinstance(data.get("data"), list):
-        raise ValueError("Respuesta host inválida")
-    report["limitations"] = ["Observaciones históricas del proveedor; no se contacta al activo ni se verifica su estado actual. Se conservan las fechas de los banners."]
-    for banner in data["data"]:
-        if not isinstance(banner, dict):
-            raise ValueError("Banner inválido")
-        if banner.get("ip_str") and banner["ip_str"] != report["target"]:
-            raise ValueError("El banner pertenece a otra IP")
-        if (banner.get("metadata") or {}).get("truncated"):
-            report.update(status="partial", error="El proveedor truncó campos de uno o más banners")
-        port, transport = banner.get("port"), banner.get("transport")
-        if type(port) is not int or not 1 <= port <= 65535 or transport not in {"tcp", "udp"}:
-            raise ValueError("Falta puerto o transporte")
-        address = report["target"]
-        service = f"[{address}]:{port}/{transport}" if ":" in address else f"{address}:{port}/{transport}"
-        when = banner.get("timestamp")
-        report["results"] += 1
-        _event(report, transport.upper() + "_PORT_OPEN", service, observed_at=when)
-        if isinstance(banner.get("data"), str) and banner["data"]:
-            _event(report, "TCP_PORT_OPEN_BANNER" if transport == "tcp" else "UDP_PORT_OPEN_INFO", banner["data"], service, when)
-        software = " ".join(str(banner[k]) for k in ("product", "version") if banner.get(k))
-        if software:
-            _event(report, "SOFTWARE_USED", software, service, when)
-        vulns = banner.get("vulns", {})
-        if not isinstance(vulns, (dict, list)):
-            raise ValueError("Formato CVE inválido")
-        for cve in vulns:
-            if not isinstance(cve, str) or not re.fullmatch(r"CVE-\d{4}-\d{4,}", cve, re.I):
-                continue
-            details = vulns[cve] if isinstance(vulns, dict) else {}
-            verified = isinstance(details, dict) and details.get("verified") is True
-            _event(report, "VULNERABILITY_CVE_UNKNOWN", cve, service, when, verificado=verified)

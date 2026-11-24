@@ -199,8 +199,7 @@ Si Docker no encuentra `dockerDesktopLinuxEngine`, abre Docker Desktop y
 espera a que arranque. Si el navegador no carga el portal, confirma la URL
 mostrada por Vite y las variables `VITE_*`. Si el login funciona pero el portal
 no muestra datos, comprueba el perfil, la organización y las políticas RLS de
-Supabase. Un 403 de Shodan puede indicar que el plan de la cuenta no permite
-las consultas requeridas. Para diagnóstico de fuentes consulta la
+Supabase. Para diagnóstico de fuentes consulta la
 [guía de Docker y OSINT](docs/backend/docker-osint.md).
 
 Detén Vite con `Ctrl+C` en su terminal y los contenedores con `docker compose

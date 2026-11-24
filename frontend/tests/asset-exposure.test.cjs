@@ -69,3 +69,54 @@ test('legacy Sin evaluar is refined without requiring a new scan', () => {
   ))[0]
   assert.equal(fixture.exposure, 'Histórico/sintético')
 })
+
+test('relation map connects only observed domain names and explicit DNS resolutions', () => {
+  const fixture = data('Sin evaluar', 'sin_evaluacion')
+  const seen = '2026-11-19T00:00:00Z'
+  fixture.assets.push(
+    { id: 'root', tipo: 'dominio', valor: 'example.com', visto_primera_vez: seen, visto_ultima_vez: seen },
+    { id: 'unobserved', tipo: 'subdominio', valor: 'dev.example.com', visto_primera_vez: seen, visto_ultima_vez: seen },
+    { id: 'foreign', tipo: 'subdominio', valor: 'api.other.org', visto_primera_vez: seen, visto_ultima_vez: seen },
+    { id: 'ip', tipo: 'ip', valor: '64.29.17.3', visto_primera_vez: seen, visto_ultima_vez: seen },
+  )
+  fixture.assetCount = fixture.assets.length
+  fixture.observations = [
+    { id: 'discovered', activo_id: 'asset', fuente_id: 'source', atributo: 'descubierto', datos: {} },
+    { id: 'dns', activo_id: 'asset', fuente_id: 'source', atributo: 'resuelve_a', datos: { ip: '64.29.17.3' } },
+  ]
+  const graph = exportsObject.liveRelations(fixture)
+  assert.ok(graph.edges.some(edge => edge.from === 'root' && edge.to === 'asset'))
+  assert.ok(graph.edges.some(edge => edge.from === 'asset' && edge.to === 'ip'))
+  assert.ok(!graph.edges.some(edge => edge.to === 'unobserved' || edge.to === 'foreign'))
+  assert.equal(graph.nodes.find(node => node.id === 'unobserved').related, 'Sin vínculo verificado en este mapa')
+})
+
+test('relation map exposes every eligible asset without duplicating nodes', () => {
+  const fixture = data('Sin evaluar', 'sin_evaluacion')
+  fixture.assets = Array.from({ length: 11 }, (_, index) => ({
+    id: `asset-${index}`, tipo: 'subdominio', valor: `host-${index}.example.com`,
+    visto_primera_vez: '2026-11-19T00:00:00Z', visto_ultima_vez: '2026-11-19T00:00:00Z',
+  }))
+  fixture.assetCount = fixture.assets.length
+  fixture.observations = []
+  const ids = exportsObject.liveRelations(fixture).nodes.filter(node => node.id !== 'root').map(node => node.id)
+  assert.equal(ids.length, 11)
+  assert.equal(new Set(ids).size, 11)
+})
+
+test('relation map show all keeps 18 assets, including isolated historical and external records', () => {
+  const fixture = data('Sin evaluar', 'sin_evaluacion')
+  fixture.assets = Array.from({ length: 18 }, (_, index) => ({
+    id: `asset-${index}`, tipo: index === 16 ? 'ip' : 'subdominio',
+    valor: index === 0 ? 'example.com' : index === 16 ? '203.0.113.10' : index === 17 ? 'external.net' : `host-${index}.example.com`,
+    visto_primera_vez: '2026-11-19T00:00:00Z', visto_ultima_vez: '2026-11-19T00:00:00Z',
+  }))
+  fixture.assetCount = 18
+  fixture.observations = []
+  const graph = exportsObject.liveRelations(fixture)
+  assert.equal(graph.nodes.length, 18)
+  assert.equal(new Set(graph.nodes.map(node => node.id)).size, 18)
+  assert.equal(graph.edges.length, 0)
+  assert.match(graph.nodes.find(node => node.id === 'asset-16').kind, /Histórico/)
+  assert.match(graph.nodes.find(node => node.id === 'asset-17').kind, /Externo/)
+})

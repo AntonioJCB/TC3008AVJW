@@ -1,6 +1,6 @@
-"""Fuentes y reglas admitidas en el flujo OSINT pasivo actual."""
+"""Fuentes y reglas admitidas en el flujo de análisis."""
 
-ACTIVE_SOURCES = ("crt.sh", "theHarvester", "SpiderFoot")
+ACTIVE_SOURCES = ("crt.sh", "theHarvester", "SpiderFoot", "Web")
 
 DISABLED_SOURCE_STATE = "deshabilitado"
 DISABLED_SOURCE_PREFIX = "Fuente deshabilitada temporalmente:"
@@ -15,7 +15,6 @@ def is_disabled_source_result(state: str | None, error: str | None) -> bool:
         state == "pendiente" and str(error or "").startswith(DISABLED_SOURCE_PREFIX)
     )
 
-# Las reglas retiradas requieren comprobaciones TLS activas.
-RETIRED_RISK_RULES = frozenset({"CONF-001", "CONF-002", "CONF-006"})
-# La evidencia histórica de urlscan solo califica como potencial.
-POTENTIAL_ONLY_RISK_RULES = frozenset({"CONF-004", "CONF-007", "CONF-008"})
+RETIRED_RISK_RULES = frozenset({"CONF-001", "CONF-002"})
+# La evidencia histórica de urlscan sigue siendo potencial en sus evaluadores.
+POTENTIAL_ONLY_RISK_RULES = frozenset({"CONF-004"})

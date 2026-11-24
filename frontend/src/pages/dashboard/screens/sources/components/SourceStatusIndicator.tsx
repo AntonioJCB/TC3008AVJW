@@ -4,7 +4,7 @@ import type { SourceStatus } from '../services/sourcesMock'
 const statusDetails = {
   healthy: { label: 'Saludable', Icon: Check },
   partial: { label: 'Parcial', Icon: Minus },
-  error: { label: 'Error', Icon: X },
+  error: { label: 'Fallida', Icon: X },
 } as const
 
 export default function SourceStatusIndicator({ status }: { status: SourceStatus }) {

@@ -88,8 +88,7 @@ escaneo cuando el hallazgo sigue activo. Ya está aplicada al proyecto remoto.
 SpiderFoot usa un perfil pasivo acotado. Google Public DNS DoH aporta postura
 DNS estructurada y urlscan aporta banners web históricos para nombres exactos.
 Los proveedores de IP quedan deshabilitados hasta declarar
-la modalidad de uso de InternetDB o configurar una clave de Shodan con acceso a
-Host. Consulta `spiderfoot-pasivo-20261118.md` para conocer la atribución, las
+la modalidad de uso de InternetDB. Consulta `spiderfoot-pasivo-20261118.md` para conocer la atribución, las
 limitaciones y qué señales pueden llegar a las reglas existentes.
 
 ## Mapa del código
@@ -97,8 +96,8 @@ limitaciones y qué señales pueden llegar a las reglas existentes.
 - `app/main.py`: rutas HTTP, autenticación y comprobación del alcance.
 - `app/settings.py`: configuración de Supabase y de los collectors desde `.env`.
 - `app/scan_service.py`: ciclo de vida del escaneo y persistencia por fuente.
-- `app/orchestrators.py`: ejecución de crt.sh, theHarvester y SpiderFoot; conserva los adaptadores Web y Shodan para interpretar el historial.
-- `app/web_posture.py`: implementación histórica de comprobaciones HTTP y TLS activas, fuera del flujo OSINT pasivo.
+- `app/orchestrators.py`: ejecución de crt.sh, theHarvester y SpiderFoot; Web opcional con consentimiento.
+- `app/web_posture.py`: comprobaciones HTTP y TLS activas del FQDN autorizado en 80/443.
 - `app/osint_normalization.py` y `app/ingestion.py`: normalización y guardado de observaciones.
 - `app/risk/`: reglas, cálculo y persistencia del riesgo.
 - `app/api/routes/health.py`: rutas de salud heredadas; la comprobación de PostgreSQL directo usa `app/core/config.py`.

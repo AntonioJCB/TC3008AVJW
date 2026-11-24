@@ -1,6 +1,13 @@
 /* Relaciones: mapa, indicadores y paneles propios de esta pantalla. */
 .proposal-dashboard .dashboard-content.relations-content { max-width: none; padding-bottom: 30px; }
 .relations-screen { display: grid; gap: 14px; }
+.relation-browser { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 11px 15px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--theme-surface); }
+.relation-browser p { max-width: 760px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.relation-browser > div { display: flex; align-items: center; gap: 9px; color: var(--ink); font-size: 12px; white-space: nowrap; }
+.relation-browser button, .relation-omitted button { padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--theme-surface-alt); color: var(--ink); font-size: 12px; font-weight: 700; }
+.relation-browser button:disabled { opacity: .45; cursor: not-allowed; }
+.relation-browser button:hover:not(:disabled), .relation-omitted button:hover { border-color: var(--teal); }
+.relation-browser button.active { border-color: var(--teal); color: var(--teal); }
 
 .relation-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .relation-metric { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 78px; padding: 10px 17px 11px; overflow: hidden; border-radius: 12px; }
@@ -12,7 +19,8 @@
 
 .relations-workspace { display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(420px, 1fr); align-items: stretch; gap: 16px; }
 .relation-graph-card { display: flex; flex-direction: column; min-width: 0; padding: 15px; overflow: hidden; }
-.relation-graph-toolbar { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 12px 18px; min-height: 34px; margin: 0 2px 12px; }
+.relation-graph-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 18px; min-height: 34px; margin: 0 2px 12px; }
+.relation-map-caption { flex: 1 1 190px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
 .relation-reset { min-height: 34px; padding: 6px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--theme-surface-alt); color: var(--ink); font-size: 12px; font-weight: 700; }
 .relation-reset:hover { border-color: var(--teal); color: var(--teal); }
 .relation-legend { display: flex; flex-wrap: wrap; gap: 8px 13px; color: var(--meta); font-size: 12px; }
@@ -27,9 +35,9 @@
 .relation-graph-controls button:disabled { opacity: .4; cursor: not-allowed; }
 .relation-graph-controls output { min-width: 37px; color: var(--ink); font-size: 11px; font-weight: 750; text-align: center; font-variant-numeric: tabular-nums; }
 .relation-graph-controls-divider { width: 1px; height: 18px; margin: 0 2px; background: var(--line); }
-.relation-graph-viewport { position: relative; flex: 1; width: 100%; min-height: 340px; aspect-ratio: 2.4; overflow: hidden; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--theme-field); cursor: grab; touch-action: none; user-select: none; }
+.relation-graph-viewport { position: relative; flex: 1; width: 100%; min-height: 460px; aspect-ratio: 1.75; overflow: hidden; border: 1px solid var(--line-soft); border-radius: 12px; background-color: var(--theme-field); cursor: grab; touch-action: none; user-select: none; }
 .relation-graph-viewport.dragging { cursor: grabbing; }
-.relation-graph { position: absolute; top: 0; left: 0; overflow: hidden; background-color: var(--theme-field); background-image: linear-gradient(to right, color-mix(in srgb, var(--line-soft) 65%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, var(--line-soft) 65%, transparent) 1px, transparent 1px); background-size: 57px 57px; transform-origin: top left; transition: transform .18s ease; will-change: transform; }
+.relation-graph { position: absolute; top: 0; left: 0; overflow: hidden; transform-origin: top left; transition: transform .18s ease; will-change: transform; background-image: linear-gradient(to right, color-mix(in srgb, var(--line-soft) 45%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, var(--line-soft) 45%, transparent) 1px, transparent 1px); background-size: 57px 57px; }
 .relation-graph-viewport.dragging .relation-graph { transition: none; }
 .relation-edges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .relation-edges line { stroke: var(--line); stroke-width: 1.6; stroke-dasharray: 5 5; vector-effect: non-scaling-stroke; opacity: .72; transition: stroke .22s ease, stroke-width .22s ease, opacity .22s ease; }
@@ -46,9 +54,18 @@
 .relation-node.tone-identity > span { color: var(--coral); }
 .relation-node.tone-critical > span { color: var(--risk-critical); }
 .relation-node strong { max-width: 100%; overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
-.relation-node small { color: var(--meta); font-size: 12px; white-space: nowrap; }
+.relation-node small { max-width: 100%; overflow: hidden; color: var(--meta); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .relation-node .relation-node-source { max-width: 100%; overflow: hidden; color: var(--theme-active); text-overflow: ellipsis; }
 .relation-node.root { width: 174px; min-height: 114px; }
+.relation-omitted { min-width: 0; padding: 18px 22px; border-radius: 12px; }
+.relation-omitted summary { color: var(--ink); font-size: 14px; font-weight: 800; cursor: pointer; }
+.relation-omitted p { max-width: 850px; margin: 12px 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.relation-omitted ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; max-height: 320px; margin: 14px 0; padding: 0; overflow: auto; list-style: none; }
+.relation-omitted li { display: grid; gap: 3px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--theme-field); }
+.relation-omitted li span { color: var(--meta); font-size: 11px; text-transform: uppercase; }
+.relation-omitted li strong { color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
+.relation-omitted li button { justify-self: start; margin-top: 4px; }
+.relation-omitted a { display: inline-block; margin-top: 4px; color: var(--theme-active); font-size: 13px; font-weight: 750; }
 
 .relations-side { display: grid; align-content: start; gap: 14px; min-width: 0; }
 .relation-focus-card { min-width: 0; padding: 21px 24px 26px; }
@@ -107,6 +124,7 @@
   .relation-metric > span { font-size: 10px; }
   .relation-metric > strong { font-size: 30px; }
   .relation-graph-toolbar { align-items: start; flex-direction: column; }
+  .relation-graph-viewport { min-height: 390px; aspect-ratio: 1; }
   .relation-focus-card,
   .priority-routes-card { padding: 19px; }
 }

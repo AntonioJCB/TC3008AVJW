@@ -77,30 +77,6 @@ class NormalizationTests(unittest.TestCase):
         self.assertEqual({item["datos"]["crtsh_id"] for item in certificates}, {42})
         self.assertEqual({item["observado_en"] for item in certificates}, {"2026-11-01T12:00:00.000Z"})
 
-    def test_shodan_match_payload_is_adapted_and_third_party_hostname_discarded(self) -> None:
-        raw = {
-            "matches": [{
-                "ip_str": "203.0.113.10",
-                "hostnames": ["api.ejemplo.com", "otro-sitio.net"],
-                "domains": ["ejemplo.com"],
-                "vulns": ["CVE-2024-0001"],
-                "data": [{
-                    "port": 22,
-                    "product": "OpenSSH",
-                    "version": "7.4",
-                    "vulns": {"CVE-2018-15473": {"verified": False}},
-                }],
-            }],
-            "total": 1,
-        }
-        result = adaptar("Shodan", raw, DOMAIN)
-        self.assertIn("ip:203.0.113.10", [f"{item['tipo']}:{item['valor']}" for item in result["observaciones"]])
-        self.assertIn("servicio:203.0.113.10:22/tcp", [f"{item['tipo']}:{item['valor']}" for item in result["observaciones"]])
-        self.assertEqual(
-            [item["datos"]["cve"] for item in result["observaciones"] if item["atributo"] == "cve"],
-            ["CVE-2024-0001", "CVE-2018-15473"],
-        )
-        self.assertEqual(result["descartadas"], [{"motivo": "fuera_de_alcance", "entrada": "otro-sitio.net"}])
 
     def test_theharvester_normalizes_and_discards_out_of_scope_email(self) -> None:
         result = adaptar(
@@ -170,31 +146,3 @@ class NormalizationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-class ShodanSearchMatchesTest(unittest.TestCase):
-    """/shodan/host/search devuelve un banner por entrada, no un host con data[]."""
-
-    def test_matches_de_busqueda_producen_servicios_y_cves(self):
-        from app.osint_normalization import adaptar
-
-        raw = {
-            "total": 2,
-            "matches": [
-                {
-                    "ip_str": "203.0.113.10", "port": 22, "transport": "tcp",
-                    "product": "OpenSSH", "version": "7.4", "hostnames": ["dev.ejemplo.com"],
-                    "domains": ["ejemplo.com"], "timestamp": "2026-10-10T07:00:00.000000",
-                    "data": "SSH-2.0-OpenSSH_7.4", "vulns": {"CVE-2018-15473": {"verified": False}},
-                },
-                {
-                    "ip_str": "203.0.113.10", "port": 5432, "transport": "tcp",
-                    "product": "PostgreSQL", "hostnames": ["dev.ejemplo.com"],
-                    "domains": ["ejemplo.com"], "data": "PostgreSQL",
-                },
-            ],
-        }
-        result = adaptar("Shodan", raw, "ejemplo.com")
-        services = {o["valor"] for o in result["observaciones"] if o["tipo"] == "servicio"}
-        cves = {o["datos"]["cve"] for o in result["observaciones"] if o["atributo"] == "cve"}
-        self.assertEqual(services, {"203.0.113.10:22/tcp", "203.0.113.10:5432/tcp"})
-        self.assertEqual(cves, {"CVE-2018-15473"})

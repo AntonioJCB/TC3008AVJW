@@ -740,7 +740,7 @@ async def execute_scan(
 ) -> ScanStatus:
     """Inicia el escaneo y responde de inmediato (202).
 
-    Las cuatro fuentes corren en segundo plano. Consulta `GET /api/escaneos/{id}`
+    Las fuentes corren en segundo plano. Consulta `GET /api/escaneos/{id}`
     para ver el avance y, al final, qué fuentes fallaron y cuáles no.
     """
     settings = get_settings()

@@ -7,12 +7,15 @@ import ipaddress
 import socket
 import ssl
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 from app.osint_normalization import normalizar_dominio
 
 
 async def _public_addresses(host: str) -> list[str]:
-    records = await asyncio.get_running_loop().getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+    records = await asyncio.wait_for(
+        asyncio.get_running_loop().getaddrinfo(host, 443, type=socket.SOCK_STREAM), timeout=3.0,
+    )
     addresses = sorted({ipaddress.ip_address(record[4][0]).compressed for record in records})
     if not addresses or not all(ipaddress.ip_address(address).is_global for address in addresses):
         raise ValueError("El nombre no resuelve exclusivamente a direcciones públicas")
@@ -73,9 +76,16 @@ async def inspect_host(target: str, timeout: float = 8.0) -> tuple[list[dict], l
         status, headers, _ = await _head(host, address, 80, tls=False, timeout=timeout)
         if 200 <= status < 300:
             events.append({"host": host, "check": "http_sin_redireccion", "status": status})
-        elif 300 <= status < 400 and not headers.get("location", "").lower().startswith("https://"):
-            events.append({"host": host, "check": "http_sin_redireccion", "status": status})
-    except (OSError, TimeoutError, ValueError):
-        # Un puerto 80 cerrado o filtrado es compatible con una postura segura.
-        pass
+        elif 300 <= status < 400:
+            destination = urlsplit(headers.get("location", ""))
+            if not (destination.scheme.lower() == "https" and destination.hostname == host
+                    and destination.port in {None, 443}):
+                errors.append("HTTP: redirección no verificable sin seguir destinos externos")
+        elif not 300 <= status < 400:
+            errors.append(f"HTTP: estado {status} no permite evaluar la redirección")
+    except (OSError, TimeoutError, ValueError) as error:
+        errors.append(f"HTTP: {type(error).__name__}; redirección no evaluada")
+    checked_at = datetime.now(timezone.utc).isoformat()
+    for event in events:
+        event.update(validation_mode="active-authorized-v1", checked_at=checked_at)
     return events, errors

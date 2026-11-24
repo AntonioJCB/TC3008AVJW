@@ -9,7 +9,7 @@ from unittest.mock import patch
 import httpx
 
 from app import orchestrators
-from app.orchestrators import OrchestratorSettings, RunnerOutput, run_all, run_crtsh, run_shodan
+from app.orchestrators import OrchestratorSettings, RunnerOutput, run_all, run_crtsh
 
 REAL_ASYNC_CLIENT = httpx.AsyncClient
 
@@ -73,12 +73,12 @@ class RunAllCallbackTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(r["rapida"]["estado"], "completado")
 
     async def test_runner_output_lleva_las_ips_del_objetivo(self):
-        async def shodan(domain):
-            return RunnerOutput([{"ip_str": "203.0.113.10"}], ("203.0.113.10",))
+        async def web(domain):
+            return RunnerOutput([{"host": domain, "check": "tls_verificado"}])
 
-        r = await run_all("ejemplo.com", OrchestratorSettings(), runners={"Shodan": shodan})
-        self.assertEqual(r["Shodan"]["contenido"], [{"ip_str": "203.0.113.10"}])
-        self.assertEqual(r["Shodan"]["ips_en_alcance"], ["203.0.113.10"])
+        r = await run_all("ejemplo.com", OrchestratorSettings(), runners={"Web": web})
+        self.assertEqual(r["Web"]["contenido"], [{"host": "ejemplo.com", "check": "tls_verificado"}])
+        self.assertEqual(r["Web"]["ips_en_alcance"], [])
 
 
 class CrtshTests(unittest.IsolatedAsyncioTestCase):
@@ -235,76 +235,6 @@ class CrtshTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.data["entries"], [{"name_value": "ejemplo.com"}])
         self.assertEqual([row["status"] for row in result.data["queries"]], ["error", "ok"])
         self.assertIn("502", result.error)
-
-
-class ShodanTests(unittest.IsolatedAsyncioTestCase):
-    def ajustes(self, **extra):
-        return OrchestratorSettings(shodan_api_key="llave-secreta-123", **extra)
-
-    async def test_sin_llave_falla_con_mensaje_claro(self):
-        with self.assertRaisesRegex(RuntimeError, "SHODAN_API_KEY"):
-            await run_shodan("ejemplo.com", OrchestratorSettings())
-
-    async def test_ip_autorizada_se_consulta_directamente_sin_resolucion_dns(self):
-        paths = []
-
-        def handler(request):
-            paths.append(request.url.path)
-            return httpx.Response(200, json={"ip_str": "8.8.8.8", "data": []})
-
-        with with_transport(handler):
-            result = await run_shodan("8.8.8.8", self.ajustes())
-        self.assertEqual(paths, ["/shodan/host/8.8.8.8"])
-        self.assertEqual(result.ips_en_alcance, ("8.8.8.8",))
-
-    async def test_resuelve_el_dominio_y_consulta_cada_ip_con_pausa(self):
-        vistas = []
-
-        def handler(request):
-            vistas.append(request.url.path)
-            if request.url.path == "/dns/resolve":
-                return httpx.Response(200, json={"ejemplo.com": "203.0.113.10", "otro.ejemplo.com": "203.0.113.11", "x": None})
-            if request.url.path == "/shodan/host/203.0.113.10":
-                return httpx.Response(200, json={"ip_str": "203.0.113.10", "data": []})
-            return httpx.Response(404, json={"error": "No information available for that IP."})
-
-        pausas = Pausas()
-        with with_transport(handler), patch.object(orchestrators, "_sleep", pausas):
-            salida = await run_shodan("ejemplo.com", self.ajustes())
-        self.assertEqual(vistas, ["/dns/resolve", "/shodan/host/203.0.113.10", "/shodan/host/203.0.113.11"])
-        self.assertEqual(salida.data, [{"ip_str": "203.0.113.10", "data": []}])  # el 404 se omite
-        self.assertEqual(salida.ips_en_alcance, ("203.0.113.10", "203.0.113.11"))
-        self.assertEqual(pausas.valores, [1.1])
-
-    async def test_respeta_el_maximo_de_ips(self):
-        resueltos = {f"h{i}.ejemplo.com": f"203.0.113.{i}" for i in range(1, 8)}
-        consultadas = []
-
-        def handler(request):
-            if request.url.path == "/dns/resolve":
-                return httpx.Response(200, json=resueltos)
-            consultadas.append(request.url.path)
-            return httpx.Response(404)
-
-        with with_transport(handler), patch.object(orchestrators, "_sleep", Pausas()):
-            salida = await run_shodan("ejemplo.com", self.ajustes(shodan_max_ips=3))
-        self.assertEqual(len(consultadas), 3)
-        self.assertEqual(len(salida.ips_en_alcance), 3)
-
-    async def test_error_de_plan_no_filtra_la_llave(self):
-        def handler(request):
-            return httpx.Response(403, json={"error": "Requires membership"})
-
-        with with_transport(handler):
-            outcome = (await run_all("ejemplo.com", self.ajustes(), runners={"Shodan": lambda d: run_shodan(d, self.ajustes())}))["Shodan"]
-        self.assertEqual(outcome["estado"], "fallido")
-        self.assertIn("Membership", outcome["error"])
-        self.assertNotIn("llave-secreta-123", outcome["error"])
-
-    async def test_sin_ips_devuelve_lista_vacia_sin_fallar(self):
-        with with_transport(lambda request: httpx.Response(200, json={"ejemplo.com": None})):
-            salida = await run_shodan("ejemplo.com", self.ajustes())
-        self.assertEqual((salida.data, salida.ips_en_alcance), ([], ()))
 
 
 class SpiderFootTests(unittest.IsolatedAsyncioTestCase):

@@ -37,6 +37,9 @@ from app.scan_service import (  # noqa: F401  (se re-exportan los helpers con su
     scan_message,
 )
 from app.settings import Settings, get_settings  # noqa: F401
+from app.assistant.chat import AsistenteError, AsistenteNoDisponible, Mensaje, crear_asistente
+from app.assistant.contexto import cargar_contexto, escaneo_mas_reciente
+from app.scan_service import COMPLETADO, INCOMPLETO
 
 logger = logging.getLogger(__name__)
 
@@ -705,3 +708,68 @@ async def recalculate_risk(
     if risk is None:  # no debería ocurrir: acabamos de guardarlo
         raise HTTPException(status_code=502, detail="No se pudo leer el riesgo calculado")
     return risk
+
+# ---------------------------------------------------------------------
+# Asistente de IA
+# ---------------------------------------------------------------------
+
+class ChatRequest(BaseModel):
+    mensajes: list[Mensaje] = Field(min_length=1, max_length=50)
+    escaneo_id: UUID | None = None
+
+
+class ChatResponse(BaseModel):
+    respuesta: str
+    escaneo_id: str | None = None
+    dominio: str | None = None
+
+
+def get_asistente() -> Any | None:
+    """None = Claude real (según backend/.env). Las pruebas lo sobrescriben con uno falso."""
+    return None
+
+
+SIN_ESCANEOS = (
+    "Todavía no hay escaneos terminados para tu organización, así que no tengo resultados que explicarte. "
+    "Cuando termine un escaneo podré ayudarte a interpretarlo."
+)
+
+
+@app.post("/api/asistente/chat", response_model=ChatResponse)
+async def assistant_chat(
+    body: ChatRequest,
+    user: Annotated[Any, Depends(_current_user)],
+    asistente: Annotated[Any, Depends(get_asistente)],
+) -> ChatResponse:
+    """Responde dudas sobre los resultados de un escaneo de tu organización (último terminado por defecto)."""
+    client = _supabase_client()
+    profile = await run_in_threadpool(_get_profile, client, str(user.id), False)
+    organization_id = profile["organizacion_id"]
+
+    if asistente is None:
+        try:
+            asistente = crear_asistente(get_settings())
+        except AsistenteNoDisponible as error:
+            raise HTTPException(status_code=503, detail="El asistente de IA no está configurado") from error
+
+    if body.escaneo_id is not None:
+        scan = await run_in_threadpool(
+            _get_scan, client, str(user.id), organization_id, str(body.escaneo_id), False
+        )
+        if scan["estado"] not in (COMPLETADO, INCOMPLETO):
+            raise HTTPException(status_code=409, detail="El escaneo aún no ha terminado")
+    else:
+        scan = await run_in_threadpool(escaneo_mas_reciente, client, organization_id)
+
+    domain = await run_in_threadpool(_organization_domain, client, organization_id)
+    if scan is None:
+        return ChatResponse(respuesta=SIN_ESCANEOS, dominio=domain)
+
+    contexto = await run_in_threadpool(cargar_contexto, client, scan, domain)
+    try:
+        texto = await run_in_threadpool(asistente.responder, contexto, body.mensajes)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except AsistenteError as error:
+        raise HTTPException(status_code=502, detail="No se pudo obtener respuesta del asistente") from error
+    return ChatResponse(respuesta=texto, escaneo_id=str(scan["id"]), dominio=domain)

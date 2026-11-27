@@ -248,7 +248,7 @@ function ClientPortalView({ organizationId }: { organizationId: string }) {
         {scanError && !scanDialogOpen && <div className="client-error" role="alert">{scanError}</div>}
         {scanStatusError && <div className="client-error" role="alert">{scanStatusError}</div>}
         {(activeSection === 'analisis' || activeSection === 'fuentes' || activeSection === 'hallazgos' || activeSection === 'historial' || activeSection === 'configuracion') && <h1 className="sr-only">{activeLabel}</h1>}
-        {activeSection === 'asistente' && <div className="content-intro proposal-section-intro"><div><span className="eyebrow">{data?.organization.dominio_principal ?? 'ORGANIZACIÓN'}</span><h1>{activeLabel}</h1><p>Información de {data?.organization.nombre ?? 'tu organización'}</p></div></div>}
+        {activeSection === 'asistente' && <div className="content-intro proposal-section-intro"><div><span className="eyebrow">{data?.organization.dominio_principal ?? 'ORGANIZACIÓN'}</span><h1 className="sr-only">{activeLabel}</h1><p>Información de {data?.organization.nombre ?? 'tu organización'}</p></div></div>}
         {loading && <p className="client-loading" role="status">Cargando información de tu organización…</p>}
         {error && <div className="client-error" role="alert">{error}</div>}
         {!loading && data && <div className="dashboard-view" key={activeSection}><ClientSection section={activeSection} data={data} latest={latest} onResolve={canLaunch ? resolveCurrentFinding : undefined} /></div>}
@@ -329,7 +329,7 @@ function Summary({ data, latest }: { data: ClientData; latest: Scan | null }) {
 function ClientSettings({ data }: { data: ClientData }) {
   const { profile } = useAuth()
   return <div className="client-section client-settings-layout">
-    <header className="settings-page-heading"><span className="eyebrow">PREFERENCIAS Y ALCANCE</span><div className="portal-info-heading"><h2>Configuración</h2><InfoTip label="configuración" text="Consulta el contexto de tu organización y ajusta la apariencia del portal." /></div></header>
+    <header className="settings-page-heading"><span className="eyebrow">PREFERENCIAS Y ALCANCE</span><InfoTip label="configuración" text="Consulta el contexto de tu organización y ajusta la apariencia del portal." /></header>
     <div className="settings-primary-grid"><SettingsScreen />
       <section className="content-card simple-section settings-card" aria-labelledby="organization-settings-title"><div className="eyebrow">CUENTA Y ORGANIZACIÓN</div><div className="portal-info-heading"><h2 id="organization-settings-title">Mi organización</h2><InfoTip label="mi organización" text="Datos de la sesión y del dominio principal." /></div><dl className="client-settings-facts"><div><dt>Nombre</dt><dd>{data.organization.nombre}</dd></div><div><dt>Dominio principal</dt><dd>{data.organization.dominio_principal}</dd></div><div><dt>Mi cuenta</dt><dd>{profile?.correo ?? '—'}</dd></div><div><dt>Mi rol</dt><dd>{profile?.rol ?? '—'}</dd></div></dl></section>
     </div>

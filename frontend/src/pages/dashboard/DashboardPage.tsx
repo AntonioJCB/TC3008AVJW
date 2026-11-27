@@ -60,7 +60,7 @@ export default function DashboardPage() {
                     <div className="eyebrow">
                       {demoProject.domain} / VISTA DEMO
                     </div>
-                    <h1>{activeLabel}</h1>
+                    <h1 className="sr-only">{activeLabel}</h1>
                     <p>
                       Escenario ficticio de {demoProject.company}. Ninguna
                       fuente externa está conectada.

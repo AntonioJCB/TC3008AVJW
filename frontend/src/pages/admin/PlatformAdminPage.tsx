@@ -24,7 +24,7 @@ export default function PlatformAdminPage() {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
-  useEffect(() => { document.title = 'BaxterSec · Gestión de plataforma' }, [])
+  useEffect(() => { document.title = `BaxterSec · ${section === 'clientes' ? 'Clientes' : 'Configuración general'}` }, [section])
 
   const load = useCallback(async () => {
     if (!supabase) return
@@ -122,7 +122,7 @@ export default function PlatformAdminPage() {
     <main className="platform-main">
       <header className="platform-topbar"><span>Administración / {section === 'clientes' ? 'Clientes' : 'Configuración'}</span><span className="platform-secure"><ShieldCheck size={16} /> Acceso protegido</span></header>
       <div className="platform-content">
-        <div className="platform-heading"><div><div className="eyebrow">BAXTERSEC · PANEL INTERNO</div>{section === 'configuracion' && <h1>Configuración general</h1>}<p>{section === 'clientes' ? 'Gestiona las organizaciones que usan la plataforma.' : 'Consulta los catálogos compartidos por la aplicación.'}</p></div>{section === 'clientes' && <button className="platform-primary" type="button" onClick={() => { setShowForm((open) => !open); setError(null) }}><Plus size={17} /> Nuevo cliente</button>}</div>
+        <div className="platform-heading"><div><div className="eyebrow">BAXTERSEC · PANEL INTERNO</div><h1 className="sr-only">{section === 'clientes' ? 'Clientes' : 'Configuración general'}</h1><p>{section === 'clientes' ? 'Gestiona las organizaciones que usan la plataforma.' : 'Consulta los catálogos compartidos por la aplicación.'}</p></div>{section === 'clientes' && <button className="platform-primary" type="button" onClick={() => { setShowForm((open) => !open); setError(null) }}><Plus size={17} /> Nuevo cliente</button>}</div>
         {error && <div className="platform-message platform-error" role="alert">{error}</div>}
         {notice && <div className="platform-message" role="status">{notice}</div>}
         {loading ? <p className="platform-loading" role="status">Cargando datos de plataforma…</p> : section === 'clientes' ? <>

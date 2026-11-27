@@ -108,9 +108,7 @@
 .client-settings-layout td { color: var(--muted); font-size: 13px; }
 .client-settings-layout td strong { color: var(--ink); }
 .client-settings-layout { display: grid; gap: 16px; min-width: 0; }
-.settings-page-heading { padding: 4px 0 6px; }
-.settings-page-heading h2 { margin: 6px 0; color: var(--ink); font-size: clamp(25px, 2.3vw, 32px); letter-spacing: -.04em; }
-.settings-page-heading p { margin: 0; color: var(--muted); font-size: 14px; }
+.settings-page-heading { display: flex; align-items: center; gap: 8px; padding: 4px 0 6px; }
 .settings-primary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
 .client-settings-layout .settings-card { min-width: 0; padding: clamp(20px, 2vw, 28px); border-radius: 12px; }
 .client-settings-layout .settings-card > h2,
@@ -118,6 +116,7 @@
 .client-settings-layout .settings-card > p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .client-settings-layout .theme-choice { max-width: none; margin-top: 20px; }
 .client-settings-layout .theme-choice button { min-height: 128px; border-radius: 9px; }
+.client-settings-layout .theme-choice button:disabled { cursor: wait; opacity: .7; }
 .client-settings-layout .settings-note { max-width: none; margin-top: 16px; }
 .client-settings-layout .client-settings-facts { margin-top: 18px; }
 .client-settings-layout .client-table-wrap { width: 100%; overflow-x: auto; }

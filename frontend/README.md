@@ -15,7 +15,7 @@ npm run dev
 Configura `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` en `.env` con
 los valores del mismo proyecto Supabase que usa el backend. La llave publicable
 puede vivir en el navegador; nunca coloques `service_role` ni `sb_secret_` aquí.
-Configura `VITE_API_URL` con la dirección de FastAPI para invitar usuarios desde
+Configura `VITE_API_URL` con la dirección de FastAPI para usar el chat e invitar usuarios desde
 la ficha de cada cliente (en local, `http://localhost:8000`). La API necesita
 estar encendida para esta acción. Agrega la URL de `/restablecer-clave` a las
 redirecciones permitidas en **Supabase Auth → URL Configuration**; usa la misma
@@ -41,7 +41,7 @@ npm run build
 - `/home/fuentes`: estado real de las fuentes del último análisis terminado.
 - `/home/hallazgos`: hallazgos registrados de los análisis del cliente.
 - `/home/historial`: escaneos y puntajes guardados.
-- `/home/asistente`: explicaciones guardadas; el chat interactivo aún no está conectado.
+- `/home/asistente`: chat con Claude sobre el último análisis terminado y explicaciones guardadas. Requiere `ANTHROPIC_API_KEY` en el backend.
 - `/home/configuracion`: datos de cuenta, autorizaciones y tema visual.
 
 El portal de cliente reutiliza los estilos y la composición de

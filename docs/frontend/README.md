@@ -46,7 +46,7 @@ backend anuncie soporte para la operación de cancelación.
 
 Los componentes `*Mock.ts` y la antigua `DashboardPage.tsx` siguen en el
 repositorio como prototipo, pero ya no están enrutados. El portal no ofrece un
-asistente interactivo todavía. La app Vite en
+asistente interactivo conectado a `/api/asistente/chat` para clientes autenticados; usa el último análisis terminado y conserva las explicaciones guardadas. Requiere `ANTHROPIC_API_KEY` en el backend y `VITE_API_URL` cuando la API no esté en `http://localhost:8000`. La app Vite en
 `database/` es otra interfaz y no sustituye al frontend principal.
 
 ## Estructura
@@ -64,7 +64,7 @@ asistente interactivo todavía. La app Vite en
 ## Integración pendiente
 
 1. Añadir paginación a las listas que superen los límites actuales.
-2. Implementar el asistente interactivo.
+2. Revisar la experiencia del chat con datos reales de un análisis terminado.
 3. Retirar los componentes de maqueta sin rutas cuando termine la integración.
 
 Consulta [frontend/README.md](../../frontend/README.md) para instalar y ejecutar

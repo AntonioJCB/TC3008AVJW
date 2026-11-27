@@ -11,8 +11,8 @@ import RequireAuth from './RequireAuth'
 
 export default function AppRoutes() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
+    <AuthProvider>
+      <ThemeProvider>
         <BrowserRouter>
           <ScrollToTop />
           <Routes>
@@ -26,8 +26,8 @@ export default function AppRoutes() {
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         </BrowserRouter>
-      </AuthProvider>
-    </ThemeProvider>
+      </ThemeProvider>
+    </AuthProvider>
   )
 }
 

@@ -41,7 +41,6 @@ export default function AdminPortalPage() {
   }, [])
 
   useEffect(() => {
-    document.title = 'BaxterSec · Administración'
     let active = true
     const timer = window.setTimeout(() => {
       void loadAdminData().then((result) => {
@@ -52,6 +51,8 @@ export default function AdminPortalPage() {
     }, 0)
     return () => { active = false; window.clearTimeout(timer) }
   }, [])
+
+  useEffect(() => { document.title = `BaxterSec · ${section === 'clientes' ? 'Clientes' : 'Configuración'}` }, [section])
 
   useEffect(() => {
     if (!menuId) return
@@ -133,7 +134,7 @@ export default function AdminPortalPage() {
     </aside>
 
     <div className="dashboard-main">
-      <header className={`client-topbar${section === 'clientes' ? ' admin-clients-topbar' : ''}`}><div><span>ADMINISTRACIÓN DE PLATAFORMA</span>{section === 'configuracion' && <h1>Configuración</h1>}<p>Gestión de BaxterSec</p></div>{section === 'clientes' && <button ref={createTriggerRef} type="button" onClick={() => { setError(null); setShowCreate(true) }}><Plus size={16} /> Nuevo cliente</button>}</header>
+      <header className={`client-topbar${section === 'clientes' ? ' admin-clients-topbar' : ''}`}><div><span>ADMINISTRACIÓN DE PLATAFORMA</span><h1 className="sr-only">{section === 'clientes' ? 'Clientes' : 'Configuración'}</h1><p>Gestión de BaxterSec</p></div>{section === 'clientes' && <button ref={createTriggerRef} type="button" onClick={() => { setError(null); setShowCreate(true) }}><Plus size={16} /> Nuevo cliente</button>}</header>
       <main className="dashboard-content client-content">
         {error && <div className="client-error" role="alert">{error}</div>}
         {notice && <div className="admin-notice" role="status">{notice}</div>}

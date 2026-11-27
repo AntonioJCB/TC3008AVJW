@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import logging
 import os
 import re
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -19,11 +21,16 @@ from supabase import Client, create_client
 
 from app.api.router import api_router
 from app.orchestrators import Runner, run_all  # noqa: F401  (run_all se re-exporta para las pruebas)
+from app.osint_normalization import normalizar_ip, parsear_servicio
 from app.risk.persistencia import calcular_y_guardar, leer_hallazgos, leer_riesgo
+from app.risk.reglas import DEFINICIONES
+from app.scan_scope import scope_allows_ip as _scope_allows_ip
+from app.spiderfoot_passive import selected_modules
 from app.scan_service import (  # noqa: F401  (se re-exportan los helpers con su nombre histórico)
     ESTADOS_FINALES,
     SOURCE_NAMES,
     audit,
+    calculate_risk_with_retry,
     cancel_scan as cancel_scan_job,
     _execute,
     _finish_scan,
@@ -34,14 +41,25 @@ from app.scan_service import (  # noqa: F401  (se re-exportan los helpers con su
     reap_stuck_scans,
     register_scan_control,
     run_scan_job,
+    scan_job_active,
     scan_message,
 )
 from app.settings import Settings, get_settings  # noqa: F401
 from app.assistant.chat import AsistenteError, AsistenteNoDisponible, Mensaje, crear_asistente
 from app.assistant.contexto import cargar_contexto, escaneo_mas_reciente
 from app.scan_service import COMPLETADO, INCOMPLETO
+from app.source_policy import (
+    CRTSH_DISABLED_REASON,
+    DISABLED_SOURCE_STATE,
+    POTENTIAL_ONLY_RISK_RULES,
+    RETIRED_RISK_RULES,
+    enabled_runner_sources,
+    is_disabled_source_result,
+)
 
 logger = logging.getLogger(__name__)
+_risk_recovery_lock = asyncio.Lock()
+_risk_recovery_after: dict[str, float] = {}
 
 INVALID_DOMAIN_DETAIL = "El dominio de la organización no es válido"
 DOMAIN_LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
@@ -94,6 +112,7 @@ class ScanStatus(BaseModel):
     dominio: str | None = None
     fuentes_ok: list[str] = Field(default_factory=list)
     fuentes_fallidas: list[str] = Field(default_factory=list)
+    fuentes_deshabilitadas: list[str] = Field(default_factory=list)
     iniciado_en: str | None = None
     finalizado_en: str | None = None
     riesgo: RiskSummary | None = None
@@ -132,6 +151,9 @@ class Finding(BaseModel):
     activo_valor: str | None = None
     fuentes: list[str] = Field(default_factory=list)
     evidencia: dict[str, Any] = Field(default_factory=dict)
+    nivel_evidencia: str = "sin_clasificar"
+    antiguedad_dias: int | None = None
+    motivo_no_confirmado: str | None = None
 
 
 class InviteClientUser(BaseModel):
@@ -185,7 +207,7 @@ def _scope_allows_domain(scope: str, domain: str) -> bool:
             candidate = _canonical_domain(token[2:] if wildcard else token)
         except HTTPException:
             continue
-        if candidate == domain and not wildcard:
+        if (candidate == domain and not wildcard) or (wildcard and domain.endswith(f".{candidate}")):
             return True
     return False
 
@@ -302,6 +324,142 @@ def _authorized_domain(client: Client, scan: dict[str, Any]) -> str:
     return domain
 
 
+_SYNTHETIC_DNS_PREFIXES = frozenset({"dmarc", "domainkey", "mta-sts", "tls"})
+_INDEPENDENT_SPIDERFOOT_MODULES = frozenset({
+    "sfp_baxter_urlscan", "sfp_baxter_commoncrawl", "sfp_crobat_api", "sfp_robtex",
+})
+
+
+def _independent_discovery(row: dict[str, Any]) -> str | None:
+    source = row.get("fuentes_osint") or {}
+    if isinstance(source, list):
+        source = source[0] if source else {}
+    source_name = str(source.get("nombre") or "").strip().lower() if isinstance(source, dict) else ""
+    details = row.get("datos") if isinstance(row.get("datos"), dict) else {}
+    module = str(details.get("modulo") or "").strip().lower()
+    if source_name in {"crt.sh", "theharvester"}:
+        return source_name
+    if source_name == "spiderfoot" and module in _INDEPENDENT_SPIDERFOOT_MODULES:
+        return f"{source_name}:{module}"
+    return None
+
+
+def _discovery_evidence(client: Client, asset_ids: list[str]) -> dict[str, set[str]]:
+    evidence: dict[str, set[str]] = {}
+    for offset in range(0, len(asset_ids), 100):
+        batch = asset_ids[offset:offset + 100]
+        page_start = 0
+        while batch:
+            rows = _execute(
+                client.table("observaciones")
+                .select("activo_id,atributo,datos,fuentes_osint(nombre)")
+                .in_("activo_id", batch).eq("atributo", "descubierto")
+                .range(page_start, page_start + 999)
+            ) or []
+            for row in rows:
+                key = _independent_discovery(row)
+                if key:
+                    evidence.setdefault(str(row["activo_id"]), set()).add(key)
+            if len(rows) < 1000:
+                break
+            page_start += 1000
+    return evidence
+
+
+def _synthetic_dns_target(target: str, domain: str) -> bool:
+    if not target.endswith(f".{domain}"):
+        return False
+    prefix = target[:-(len(domain) + 1)].split(".", 1)[0]
+    return prefix in _SYNTHETIC_DNS_PREFIXES
+
+
+def _target_priority(target: str, domain: str, evidence: set[str]) -> tuple[Any, ...]:
+    preferred = {
+        domain: 0,
+        f"api.{domain}": 1,
+        f"dev.{domain}": 2,
+        f"www.{domain}": 3,
+    }
+    if target in preferred:
+        return (0, preferred[target])
+    if evidence:
+        return (1, -len(evidence), target.count("."), target)
+    return (2 if normalizar_ip(target) is None else 3, target.count("."), target)
+
+
+def _scan_targets(
+    client: Client,
+    scan: dict[str, Any],
+    domain: str,
+    max_targets: int,
+    spiderfoot_modules: str | None = None,
+) -> tuple[list[str], str, dict[str, str]]:
+    """Elige el dominio y sus subdominios del inventario para un mismo análisis.
+
+    La autorización vigente del dominio principal cubre sus subdominios
+    registrados. Las IPs de hosting compartido solo se consultan si el alcance
+    incluye esa IP o un CIDR. Los servicios se consultan mediante su IP.
+    """
+    authorization = _execute(
+        client.table("autorizaciones_dominio").select("alcance")
+        .eq("id", scan["autorizacion_id"]).maybe_single()
+    )
+    if not authorization:
+        raise HTTPException(status_code=403, detail="No se encontró el alcance autorizado")
+    scope = str(authorization.get("alcance") or "")
+    inventory_rows: list[dict[str, Any]] = []
+    start = 0
+    while True:
+        rows = _execute(
+            client.table("activos").select("id, tipo, valor")
+            .eq("organizacion_id", scan["organizacion_id"])
+            .in_("tipo", ["dominio", "subdominio", "ip", "servicio"])
+            .order("id").range(start, start + 99)
+        ) or []
+        if not rows:
+            break
+        inventory_rows.extend(rows)
+        if len(rows) < 100:
+            break
+        start += 100
+
+    asset_ids = [str(row["id"]) for row in inventory_rows if row.get("id")]
+    evidence_by_id = _discovery_evidence(client, asset_ids) if asset_ids else {}
+    candidates: dict[str, set[str]] = {domain: set()}
+    excluded: dict[str, str] = {}
+    for row in inventory_rows:
+        if row["tipo"] in {"dominio", "subdominio"}:
+            try:
+                target = _canonical_domain(str(row["valor"]))
+            except HTTPException:
+                continue
+            allowed = target == domain or (
+                target.endswith(f".{domain}")
+                and (_scope_allows_domain(scope, domain) or _scope_allows_domain(scope, target))
+            )
+        else:
+            target = normalizar_ip(str(row["valor"])) if row["tipo"] == "ip" else (parsear_servicio(str(row["valor"])) or {}).get("ip")
+            allowed = bool(target and ipaddress.ip_address(target).is_global and _scope_allows_ip(scope, target))
+            if allowed:
+                try:
+                    selected_modules(target, spiderfoot_modules) if spiderfoot_modules else selected_modules(target)
+                except ValueError:
+                    excluded[target] = "Sin módulos OSINT pasivos configurados compatibles con este objetivo"
+                    continue
+        if not target or not allowed:
+            continue
+        evidence = evidence_by_id.get(str(row.get("id")), set())
+        candidates.setdefault(target, set()).update(evidence)
+
+    for target, evidence in list(candidates.items()):
+        if target != domain and _synthetic_dns_target(target, domain) and not evidence:
+            excluded[target] = "Objetivo sintético histórico derivado de DNS interno sin evidencia independiente"
+            del candidates[target]
+
+    targets = sorted(candidates, key=lambda target: _target_priority(target, domain, candidates[target]))
+    return targets, scope, excluded
+
+
 def _verify_scope(
     client: Client,
     user_id: str,
@@ -347,6 +505,9 @@ def _source_results(client: Client, scan_id: str) -> dict[str, dict[str, Any]]:
             )
             if row.get(key) is not None
         }
+        current = results[row["fuentes_osint"]["nombre"]]
+        if is_disabled_source_result(current.get("estado"), current.get("error")):
+            current["estado"] = DISABLED_SOURCE_STATE
     for name in SOURCE_NAMES:
         results.setdefault(name, dict(_PENDIENTE))
     return results
@@ -364,8 +525,11 @@ def _status_response(
         puede_detener=scan_state == "ejecutando",
         fuentes=[SourceStatus(fuente=name, **results[name]) for name in SOURCE_NAMES],
         mensaje=scan_message(scan_state, results),
-        fuentes_ok=[n for n in SOURCE_NAMES if results[n].get("estado") == "completado"],
-        fuentes_fallidas=[n for n in SOURCE_NAMES if results[n].get("estado") == "fallido"],
+        fuentes_ok=[n for n in SOURCE_NAMES if results[n].get("estado") == "completado" and not results[n].get("error")],
+        fuentes_fallidas=[n for n in SOURCE_NAMES if results[n].get("estado") == "fallido" or (
+            results[n].get("error") and results[n].get("estado") != DISABLED_SOURCE_STATE
+        )],
+        fuentes_deshabilitadas=[n for n in SOURCE_NAMES if results[n].get("estado") == DISABLED_SOURCE_STATE],
         **extra,
     )
 
@@ -380,6 +544,28 @@ def _organization_domain(client: Client, organization_id: str) -> str | None:
 def _risk_or_none(client: Client, scan_id: str) -> RiskSummary | None:
     riesgo = leer_riesgo(client, scan_id)
     return RiskSummary(**riesgo) if riesgo else None
+
+
+async def _risk_or_recover(client: Client, scan_id: str, scan_state: str) -> RiskSummary | None:
+    risk = await run_in_threadpool(_risk_or_none, client, scan_id)
+    if risk is not None or scan_state not in {"completado", "incompleto", "fallido"} or scan_job_active(scan_id):
+        return risk
+    async with _risk_recovery_lock:
+        if time.monotonic() < _risk_recovery_after.get(scan_id, 0):
+            return None
+        risk = await run_in_threadpool(_risk_or_none, client, scan_id)
+        if risk is not None:
+            return risk
+        try:
+            await calculate_risk_with_retry(client, scan_id, attempts=2)
+            risk = await run_in_threadpool(_risk_or_none, client, scan_id)
+            if risk is not None:
+                _risk_recovery_after.pop(scan_id, None)
+            return risk
+        except Exception:
+            _risk_recovery_after[scan_id] = time.monotonic() + 30
+            logger.exception("No se pudo recuperar el Risk Score del escaneo %s", scan_id)
+            return None
 
 
 # ---------------------------------------------------------------------
@@ -428,6 +614,29 @@ def get_runners() -> dict[str, Runner] | None:
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"estado": "disponible"}
+
+
+@app.get("/api/admin/configuracion-operativa")
+async def operational_configuration(user: Any = Depends(_current_user)) -> dict[str, Any]:
+    client = _supabase_client()
+    profile = _execute(client.table("usuarios").select("esta_activo").eq("id", str(user.id)).maybe_single())
+    admin = _execute(client.table("administradores_plataforma").select("usuario_id").eq("usuario_id", str(user.id)).maybe_single())
+    if not profile or not profile.get("esta_activo") or not admin:
+        raise HTTPException(status_code=403, detail="Solo un administrador de plataforma puede consultar la configuración operativa")
+    settings = get_settings()
+    sources = enabled_runner_sources(crtsh_enabled=settings.crtsh_enabled, web_enabled=settings.web_enabled)
+    rules = {
+        code: {
+            "estado": "retirada" if code in RETIRED_RISK_RULES
+            else "sin_evaluador" if code not in DEFINICIONES
+            else "solo_potencial" if code in POTENTIAL_ONLY_RISK_RULES
+            else "evaluable",
+            "fuentes": list(definition.requiere_fuentes) if definition else [],
+        }
+        for code in set(DEFINICIONES) | RETIRED_RISK_RULES
+        for definition in [DEFINICIONES.get(code)]
+    }
+    return {"fuentes": sources, "reglas": rules}
 
 
 @app.post("/api/admin/clientes/{organization_id}/usuarios/invitar", status_code=201)
@@ -561,19 +770,28 @@ async def execute_scan(
 ) -> ScanStatus:
     """Inicia el escaneo y responde de inmediato (202).
 
-    Las cuatro fuentes corren en segundo plano. Consulta `GET /api/escaneos/{id}`
+    Las fuentes corren en segundo plano. Consulta `GET /api/escaneos/{id}`
     para ver el avance y, al final, qué fuentes fallaron y cuáles no.
     """
     settings = get_settings()
     client = _supabase_client()
     scan_id_text = str(scan_id)
     scan, domain = await run_in_threadpool(_verify_scope, client, str(user.id), scan_id_text)
+    targets, ip_scope, excluded_targets = await run_in_threadpool(
+        _scan_targets, client, scan, domain, settings.scan_max_targets, settings.spiderfoot_modules,
+    )
     source_ids = await run_in_threadpool(_source_ids, client)
     await run_in_threadpool(_start_scan, client, scan_id_text, source_ids)
 
     register_scan_control(scan_id_text)
-    background.add_task(run_scan_job, client, settings, scan, source_ids, domain, runners)
+    background.add_task(
+        run_scan_job, client, settings, scan, source_ids, domain, runners, targets, ip_scope, excluded_targets,
+    )
     running = {name: {"estado": "ejecutando"} for name in SOURCE_NAMES}
+    if not getattr(settings, "crtsh_enabled", True):
+        running["crt.sh"] = {"estado": DISABLED_SOURCE_STATE, "error": CRTSH_DISABLED_REASON}
+    if not settings.web_enabled:
+        running["Web"] = {"estado": DISABLED_SOURCE_STATE, "error": "Fuente deshabilitada temporalmente: WEB_ENABLED=false en la configuración efectiva."}
     return _status_response(
         scan_id_text, "ejecutando", running, dominio=domain,
         iniciado_en=datetime.now(timezone.utc).isoformat(),
@@ -614,7 +832,7 @@ async def get_scan(
     scan, _ = await run_in_threadpool(_verify_scope, client, str(user.id), str(scan_id), False)
     results = await run_in_threadpool(_source_results, client, str(scan_id))
     domain = await run_in_threadpool(_organization_domain, client, scan["organizacion_id"])
-    risk = await run_in_threadpool(_risk_or_none, client, str(scan_id))
+    risk = await _risk_or_recover(client, str(scan_id), scan["estado"])
     return _status_response(
         str(scan_id),
         scan["estado"],
@@ -665,9 +883,83 @@ async def get_findings(
                 activo_valor=asset.get("valor"),
                 fuentes=evidence.get("fuentes") or [n for n in [(row.get("fuentes_osint") or {}).get("nombre")] if n],
                 evidencia=evidence,
+                nivel_evidencia=evidence.get("nivel_evidencia", "sin_clasificar"),
+                antiguedad_dias=(evidence.get("antiguedad_dias")
+                                 if isinstance(evidence.get("antiguedad_dias"), int) else None),
+                motivo_no_confirmado=(evidence.get("motivo_no_confirmado")
+                                      if isinstance(evidence.get("motivo_no_confirmado"), str) else None),
             )
         )
     return findings
+
+
+@app.post("/api/escaneos/{scan_id}/hallazgos/{finding_id}/resolver", response_model=RiskSummary)
+async def resolve_finding(
+    scan_id: UUID,
+    finding_id: UUID,
+    user: Annotated[Any, Depends(_current_user)],
+) -> RiskSummary:
+    """Cierra un hallazgo vigente y actualiza el puntaje del último análisis."""
+    client = _supabase_client()
+    profile = await run_in_threadpool(_get_profile, client, str(user.id), True)
+    scan = await run_in_threadpool(
+        _get_scan, client, str(user.id), profile["organizacion_id"], str(scan_id), False
+    )
+    if scan["estado"] not in ESTADOS_FINALES or not scan.get("finalizado_en"):
+        raise HTTPException(status_code=409, detail="El análisis aún no ha terminado")
+    latest = await run_in_threadpool(
+        _execute,
+        client.table("escaneos").select("id")
+        .eq("organizacion_id", profile["organizacion_id"])
+        .in_("estado", ["completado", "incompleto", "fallido"])
+        .not_.is_("finalizado_en", "null")
+        .order("finalizado_en", desc=True).limit(1).maybe_single(),
+    )
+    if not latest or latest["id"] != str(scan_id):
+        raise HTTPException(status_code=409, detail="Solo se pueden resolver hallazgos del último análisis")
+    current_risk = await run_in_threadpool(leer_riesgo, client, str(scan_id))
+    if not current_risk or not (current_risk.get("cobertura") or {}).get("persistencia_hallazgos"):
+        raise HTTPException(status_code=409, detail="Primero actualiza el backend y ejecuta un análisis nuevo")
+    finding = await run_in_threadpool(
+        _execute,
+        client.table("hallazgos").select("id, estado, evidencia")
+        .eq("id", str(finding_id)).eq("escaneo_id", str(scan_id)).maybe_single(),
+    )
+    if not finding:
+        raise HTTPException(status_code=404, detail="No se encontró el hallazgo")
+    if (finding.get("evidencia") or {}).get("retirado_del_riesgo") is True:
+        raise HTTPException(status_code=409, detail="El hallazgo ya no forma parte del riesgo vigente")
+    if finding["estado"] == "resuelto":
+        return RiskSummary(**current_risk)
+    if finding["estado"] not in {"abierto", "nuevo", "revisado", "aceptado"}:
+        raise HTTPException(status_code=409, detail="El hallazgo no se puede resolver desde este estado")
+    try:
+        await run_in_threadpool(
+            _execute, client.table("hallazgos").update({"estado": "resuelto"})
+            .eq("id", str(finding_id)).eq("escaneo_id", str(scan_id))
+        )
+        await run_in_threadpool(calcular_y_guardar, client, str(scan_id))
+    except Exception as error:
+        logger.exception("No se pudo resolver el hallazgo %s", finding_id)
+        try:
+            await run_in_threadpool(
+                _execute, client.table("hallazgos").update({"estado": finding["estado"]})
+                .eq("id", str(finding_id)).eq("escaneo_id", str(scan_id))
+            )
+        except Exception:
+            logger.exception("No se pudo restaurar el estado del hallazgo %s", finding_id)
+        raise HTTPException(status_code=502, detail="No se pudo actualizar el Risk Score") from error
+    try:
+        await run_in_threadpool(
+            audit, client, user_id=str(user.id), organization_id=profile["organizacion_id"],
+            action="hallazgo_resuelto", scan_id=str(scan_id), detail={"hallazgo_id": str(finding_id)},
+        )
+    except Exception:
+        logger.exception("No se pudo auditar la resolución del hallazgo %s", finding_id)
+    risk = await run_in_threadpool(_risk_or_none, client, str(scan_id))
+    if risk is None:
+        raise HTTPException(status_code=502, detail="No se pudo leer el Risk Score actualizado")
+    return risk
 
 
 @app.get("/api/escaneos/{scan_id}/riesgo", response_model=RiskSummary)

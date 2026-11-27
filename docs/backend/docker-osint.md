@@ -24,6 +24,7 @@ Configura `backend/.env` a partir de `backend/.env.example` si aún no existe.
 Necesitas `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` del mismo proyecto. El
 PAT de Censys es opcional; la cuenta necesita acceso al lookup de hosts
 y créditos para que esa fuente funcione. Consulta [censys.md](censys.md). El archivo `.env` no debe subirse a Git.
+La validación Web activa requiere `WEB_ENABLED=true` y consentimiento en cada análisis.
 
 Compose establece dentro del contenedor las dos rutas que cambian respecto a
 Windows:
@@ -102,6 +103,7 @@ en el volumen `spiderfoot-data`. No uses `down -v` si quieres conservarlos.
 
 Si Censys devuelve 401/403, revisa el PAT y los permisos de cuenta/organización.
 Un 429 indica límites de solicitudes o cuota. Un `ReadTimeout` de crt.sh puede ocurrir
+Un `ReadTimeout` de crt.sh puede ocurrir
 aunque la red del contenedor funcione. Consulta [osint.md](osint.md) para el
 diagnóstico de cada fuente.
 

@@ -6,9 +6,9 @@ export default function RelationFocus({ node }: { node: RelationNode }) {
     <span className="relation-kind-badge">{node.kind}</span>
     <h3 id="relation-focus-title">{node.name}</h3>
     <p>{node.description}</p>
-    <div className="relation-impact"><span>Impacto o concentración</span><strong>{node.impact}</strong></div>
+    <div className={`relation-impact${node.tone === 'critical' ? ' is-critical' : ''}`}><span>{node.id === 'root' ? 'Activos en el inventario' : 'Hallazgos del activo'}</span><strong>{node.impact}</strong></div>
     <dl className="relation-facts">
-      <div><dt>Fuentes</dt><dd>{node.sources.join(' · ') || 'Sin fuentes directas'}</dd></div>
+      <div><dt>Fuentes que lo observaron</dt><dd>{node.sources.join(' · ') || 'Sin observaciones registradas'}</dd></div>
       <div><dt>Relacionado con</dt><dd>{node.related}</dd></div>
     </dl>
   </section>

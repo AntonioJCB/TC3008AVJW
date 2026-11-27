@@ -1,6 +1,6 @@
 // Datos estáticos de la propuesta visual. No provienen de un escaneo.
 export type AssetKind = 'Dominio' | 'Subdominio' | 'IP pública' | 'Correo' | 'Servicio'
-export type AssetExposure = 'Crítica' | 'Alta' | 'Media' | 'Baja' | 'Sin evaluar'
+export type AssetExposure = 'Crítica' | 'Alta' | 'Media' | 'Baja' | 'Evaluado sin hallazgos' | 'Evaluación parcial' | 'Sin evaluar' | 'Fuera de alcance' | 'Sin evaluación compatible' | 'Histórico/sintético'
 export type AssetFilter = AssetKind | 'Todos'
 
 export interface AssetRecord {
@@ -11,6 +11,9 @@ export interface AssetRecord {
   exposure: AssetExposure
   findings: number
   sources: string[]
+  historicalSources?: string[]
+  informationalFindings?: number
+  coverageState?: string
   observed: string
   observationState: string
   isNew: boolean
@@ -30,19 +33,19 @@ export const assetFilters: { label: string; kind: AssetFilter }[] = [
 export const sampleAssets: AssetRecord[] = [
   {
     id: 'admin', kind: 'Subdominio', value: 'admin.empresa.com', detail: 'Resuelve a 189.203.•••.••',
-    exposure: 'Crítica', findings: 2, sources: ['crt.sh', 'Shodan'], observed: 'Hace 4 min',
+    exposure: 'Crítica', findings: 2, sources: ['crt.sh'], observed: 'Hace 4 min',
     observationState: 'Nuevo', isNew: true, confidence: 96,
     description: 'Activo nuevo correlacionado por certificado, resolución DNS y observación de servicio.',
   },
   {
     id: 'dev', kind: 'Subdominio', value: 'dev.empresa.com', detail: 'Entorno de desarrollo',
-    exposure: 'Crítica', findings: 1, sources: ['SpiderFoot', 'Shodan'], observed: 'Hace 21 min',
+    exposure: 'Crítica', findings: 1, sources: ['SpiderFoot'], observed: 'Hace 21 min',
     observationState: 'Nuevo', isNew: true, confidence: 93,
     description: 'Entorno de desarrollo público relacionado con servicios observados en la muestra.',
   },
   {
     id: 'ip', kind: 'IP pública', value: '189.203.•••.••', detail: '3 servicios observados',
-    exposure: 'Alta', findings: 2, sources: ['Shodan', 'DNS'], observed: 'Hoy, 10:29',
+    exposure: 'Alta', findings: 2, sources: ['DNS'], observed: 'Hoy, 10:29',
     observationState: 'Confirmado', isNew: false, confidence: 91,
     description: 'Dirección pública vinculada a subdominios y servicios del escenario de ejemplo.',
   },
@@ -90,7 +93,7 @@ const mockRecord = (kind: AssetKind, value: string, index: number, isNew = false
   detail: kind === 'Dominio' ? 'Dominio relacionado' : kind === 'Subdominio' ? 'Servicio público observado' : kind === 'IP pública' ? 'Dirección pública relacionada' : 'Cuenta corporativa observada',
   exposure: 'Baja',
   findings: 0,
-  sources: kind === 'Correo' ? ['theHarvester'] : kind === 'IP pública' ? ['Shodan', 'DNS'] : ['crt.sh', 'DNS'],
+  sources: kind === 'Correo' ? ['theHarvester'] : kind === 'IP pública' ? ['DNS'] : ['crt.sh', 'DNS'],
   observed: 'Hoy, 09:40',
   observationState: isNew ? 'Nuevo' : 'Confirmado',
   isNew,

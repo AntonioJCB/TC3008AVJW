@@ -41,7 +41,7 @@ TC3008AVJW/
 * crt.sh: Consulta HTTP para descubrimiento de subdominios a través de certificados SSL/TLS.
 * theHarvester: Ejecución via CLI para descubrir correos corporativos y subdominios.
 * SpiderFoot: Interacción via API/CLI para recolección automatizada amplia.
-* Shodan: Consultas via API REST para identificar puertos y servicios expuestos.
+* Web: validación activa opcional de HTTPS/TLS y redirección para el FQDN autorizado.
 
 ### D. Motor de Procesamiento, Correlación y Riesgo
 * Tecnologías: Python
@@ -71,7 +71,7 @@ TC3008AVJW/
        │
        │  2. Invocación de Análisis
        ▼
-[Orquestador OSINT] ──► Ejecuta colectores en paralelo crt.sh, theHarvester, SpiderFoot, Shodan
+[Orquestador OSINT] ──► Ejecuta crt.sh, theHarvester y SpiderFoot; Web solo con habilitación y consentimiento
        │
        │  3. Devuelve resultados crudos
        ▼

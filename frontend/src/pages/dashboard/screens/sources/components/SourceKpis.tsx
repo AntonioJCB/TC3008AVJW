@@ -3,7 +3,7 @@ import { sourceStats } from '../services/sourcesMock'
 const metrics = [
   { label: 'CONECTADAS', value: sourceStats.connected, detail: 'Fuentes públicas autorizadas', tone: 'default' },
   { label: 'SALUDABLES', value: sourceStats.healthy, detail: 'Respondieron sin incidencias', tone: 'healthy' },
-  { label: 'RESPUESTA PARCIAL', value: sourceStats.partial, detail: 'Shodan agotó el tiempo', tone: 'partial' },
+  { label: 'RESPUESTA PARCIAL', value: sourceStats.partial, detail: 'Consulta incompleta', tone: 'partial' },
   { label: 'COBERTURA', value: `${sourceStats.coverage}%`, detail: `${sourceStats.rawRecords} registros procesados`, tone: 'coverage' },
 ] as const
 

@@ -14,7 +14,7 @@ activos, hallazgos, riesgo y bitácora.
 4. `POST /api/escaneos/{id}/ejecutar` reclama el escaneo y prepara sus fuentes
    en una transacción mediante `iniciar_escaneo`. Mientras esa migración no esté
    aplicada, usa temporalmente el inicio anterior. La respuesta es `202`.
-5. Los adaptadores consultan crt.sh, Censys, theHarvester y SpiderFoot. Cada
+5. Los adaptadores pasivos consultan crt.sh, Censys, theHarvester y SpiderFoot; Web realiza validación activa opcional. Cada
    resultado se guarda, normaliza y deduplica por separado. Un fallo de una
    fuente no cancela las demás; el escaneo termina `completado`, `incompleto`
    o `fallido`.
@@ -41,6 +41,9 @@ python -m uvicorn app.main:app --reload
 Configura `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` en `backend/.env`.
 La llave de servicio es solo para el servidor. `CENSYS_PAT` es opcional;
 si falta, esa fuente se reporta fallida y el escaneo puede quedar incompleto.
+SpiderFoot usa Google Public DNS
+DoH y urlscan de forma predeterminada; el módulo InternetDB no está en la imagen actual. Web requiere `WEB_ENABLED=true` y consentimiento por análisis;
+solo comprueba el FQDN principal autorizado en 80/443.
 Los demás binarios y tiempos se configuran con las variables documentadas en
 `.env.example`. Define `CORS_ORIGINS` con los orígenes reales al desplegar y
 `FRONTEND_URL` con la dirección pública del frontend para que las invitaciones

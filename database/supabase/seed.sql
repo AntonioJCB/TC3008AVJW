@@ -14,7 +14,8 @@ INSERT INTO public.fuentes_osint (nombre, tipo_acceso) VALUES
     ('Censys',       'api_key'),
     ('SpiderFoot',   'herramienta_local'),
     ('theHarvester', 'herramienta_local'),
-    ('crt.sh',       'publica')
+    ('crt.sh',       'publica'),
+    ('Web',          'comprobacion_web')
 ON CONFLICT (nombre) DO UPDATE
     SET tipo_acceso = EXCLUDED.tipo_acceso;
 -- ---------------------------------------------------------------------
@@ -38,7 +39,7 @@ VALUES
      'servicio', 'infraestructura', 'media', 8, true),
     ('INFRA-004', 'Subdominio susceptible a takeover',
      'Registro DNS apuntando a un recurso externo que ya no existe.',
-     'subdominio', 'infraestructura', 'alta', 20, false),
+     'subdominio', 'infraestructura', 'alta', 20, true),
 
     -- Configuración
     ('CONF-001', 'Certificado histórico de CT expirado',
@@ -49,21 +50,21 @@ VALUES
      'dominio', 'configuracion', 'baja', 0, true),
     ('CONF-003', 'Registros SPF/DKIM/DMARC ausentes o débiles',
      'El dominio puede ser suplantado en correos electrónicos.',
-     'dominio', 'configuracion', 'media', 10, false),
+     'dominio', 'configuracion', 'media', 10, true),
     ('CONF-004', 'Cabeceras de seguridad HTTP ausentes',
      'Faltan cabeceras como HSTS, CSP o X-Content-Type-Options.',
-     'dominio', 'configuracion', 'baja', 5, false),
+     'dominio', 'configuracion', 'baja', 5, true),
     ('CONF-005', 'Protocolo TLS obsoleto habilitado',
      'El servidor acepta TLS 1.0 o 1.1.',
-     'dominio', 'configuracion', 'media', 10, false),
+     'dominio', 'configuracion', 'media', 10, true),
 
     -- Identidad digital
     ('IDEN-001', 'Correo corporativo en filtración de credenciales',
      'Una cuenta de la organización aparece en una filtración pública.',
-     'correo', 'identidad_digital', 'alta', 25, false),
+     'correo', 'identidad_digital', 'alta', 25, true),
     ('IDEN-002', 'Dominio similar registrado (typosquatting)',
      'Existe un dominio parecido al de la organización que podría usarse para phishing.',
-     'dominio', 'identidad_digital', 'media', 10, false),
+     'dominio', 'identidad_digital', 'media', 10, true),
     ('IDEN-003', 'Correo corporativo encontrado en fuente pública',
      'La publicación de una dirección no demuestra filtración de credenciales.',
      'correo', 'identidad_digital', 'baja', 0, true),
@@ -71,16 +72,16 @@ VALUES
     -- Fuga de datos
     ('FUGA-001', 'Credenciales o llaves API en repositorio público',
      'Secretos de la organización publicados en código abierto.',
-     'dominio', 'fuga_de_datos', 'critica', 30, false),
+     'dominio', 'fuga_de_datos', 'critica', 30, true),
     ('FUGA-002', 'Documentos internos indexados en buscadores',
      'Archivos que no deberían ser públicos aparecen en resultados de búsqueda.',
-     'dominio', 'fuga_de_datos', 'media', 12, false),
+     'dominio', 'fuga_de_datos', 'media', 12, true),
     ('FUGA-003', 'Almacenamiento en la nube público',
      'Bucket o contenedor accesible sin autenticación.',
-     'servicio', 'fuga_de_datos', 'critica', 30, false),
+     'servicio', 'fuga_de_datos', 'critica', 30, true),
     ('FUGA-004', 'Datos de la organización en sitios de pegado',
      'Información de la organización publicada en servicios tipo paste.',
-     'dominio', 'fuga_de_datos', 'alta', 20, false)
+     'dominio', 'fuga_de_datos', 'alta', 20, true)
 ON CONFLICT (codigo) DO UPDATE SET
     nombre      = EXCLUDED.nombre,
     descripcion = EXCLUDED.descripcion,

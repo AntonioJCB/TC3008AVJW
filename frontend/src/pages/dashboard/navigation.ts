@@ -1,5 +1,6 @@
 export const navigation = [
   { path: '/home', label: 'Resumen', section: 'resumen', group: 'Principal', icon: '▦' },
+  { path: '/home/analisis', label: 'Análisis', section: 'analisis', group: 'Principal', icon: '◷' },
   { path: '/home/activos', label: 'Activos', section: 'activos', group: 'Descubrimiento', icon: '◇' },
   { path: '/home/relaciones', label: 'Relaciones', section: 'relaciones', group: 'Descubrimiento', icon: '⌘' },
   { path: '/home/fuentes', label: 'Fuentes', section: 'fuentes', group: 'Descubrimiento', icon: '⌕' },

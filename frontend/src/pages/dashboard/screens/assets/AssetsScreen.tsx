@@ -7,6 +7,7 @@ import { useAssetExplorer } from './controller/useAssetExplorer'
 import { mockAssets } from './services/assetsMock'
 import type { ClientData } from '../../services/clientData'
 import { liveAssets } from '../../services/liveAdapters'
+import { isActiveSource } from '../../services/sourcePolicy'
 import './assets.css'
 
 export default function AssetsScreen({ data }: { data?: ClientData }) {
@@ -14,14 +15,17 @@ export default function AssetsScreen({ data }: { data?: ClientData }) {
   const explorer = useAssetExplorer(records)
   const [detailOpen, setDetailOpen] = useState(false)
   const closeDetail = useCallback(() => setDetailOpen(false), [])
-  const completed = data?.sourceResults.filter((result) => result.estado === 'completado').length ?? 0
+  const activeSources = data?.sources.filter((source) => isActiveSource(source.nombre)) ?? []
+  const activeIds = new Set(activeSources.map((source) => source.id))
+  const activeResults = data?.sourceResults.filter((result) => activeIds.has(result.fuente_id)) ?? []
+  const completed = activeResults.filter((result) => result.estado === 'completado' && !result.error).length
   const quality = data ? {
-    coverage: data.sources.length ? Math.round(completed / data.sources.length * 100) : 0,
+    coverage: activeSources.length ? Math.round(completed / activeSources.length * 100) : 0,
     completed,
-    sources: data.sources.length,
-    raw: data.sourceResults.reduce((total, result) => total + result.observaciones_generadas, 0),
-    normalized: data.sourceResults.reduce((total, result) => total + result.observaciones_nuevas, 0),
-    duplicates: data.sourceResults.reduce((total, result) => total + result.observaciones_duplicadas, 0),
+    sources: activeSources.length,
+    raw: activeResults.reduce((total, result) => total + result.observaciones_generadas, 0),
+    normalized: activeResults.reduce((total, result) => total + result.observaciones_nuevas, 0),
+    duplicates: activeResults.reduce((total, result) => total + result.observaciones_duplicadas, 0),
     assets: data.assetCount,
   } : undefined
   const newCount = records.filter((asset) => asset.isNew).length

@@ -4,6 +4,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+NIVELES_EVIDENCIA = frozenset({"informativa", "potencial", "confirmada"})
+
+
 @dataclass(frozen=True, slots=True)
 class Obs:
     """Una observación normalizada (fila de `observaciones` + su activo y su fuente)."""
@@ -39,6 +42,15 @@ class Candidato:
     activo_id: str
     observaciones: list[Obs]
     detalle: dict[str, Any] = field(default_factory=dict)
+    nivel_evidencia: str = "confirmada"
+    antiguedad_dias: int | None = None
+    motivo_no_confirmado: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.nivel_evidencia not in NIVELES_EVIDENCIA:
+            raise ValueError("nivel_evidencia inválido")
+        if self.nivel_evidencia == "confirmada" and self.motivo_no_confirmado:
+            raise ValueError("Una evidencia confirmada no admite motivo_no_confirmado")
 
 
 @dataclass(slots=True)
@@ -51,8 +63,22 @@ class Hallazgo:
     severidad: str
     confianza: float
     evidencia: dict[str, Any]
+    estado: str = "abierto"
+    nivel_evidencia: str = "confirmada"
+    antiguedad_dias: int | None = None
+    motivo_no_confirmado: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.nivel_evidencia not in {"potencial", "confirmada", "sin_clasificar"}:
+            raise ValueError("nivel_evidencia de hallazgo inválido")
 
     def como_dict(self) -> dict[str, Any]:
+        evidencia = {
+            **self.evidencia,
+            "nivel_evidencia": self.nivel_evidencia,
+            "antiguedad_dias": self.antiguedad_dias,
+            "motivo_no_confirmado": self.motivo_no_confirmado,
+        }
         return {
             "activo_id": self.activo_id,
             "regla_id": self.regla_id,
@@ -60,7 +86,8 @@ class Hallazgo:
             "categoria": self.categoria,
             "severidad": self.severidad,
             "confianza": self.confianza,
-            "evidencia": self.evidencia,
+            "evidencia": evidencia,
+            "estado": self.estado,
         }
 
 

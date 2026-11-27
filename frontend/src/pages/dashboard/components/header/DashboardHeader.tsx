@@ -9,9 +9,10 @@ type HeaderProps = {
   actionDisabled?: boolean
   domainVerified?: boolean
   organizationName?: string
+  showAction?: boolean
 }
 
-export default function DashboardHeader({ onNewAnalysis, domain, lastAnalysis, actionLabel = 'Nuevo análisis', actionDisabled = false, domainVerified = false, organizationName }: HeaderProps) {
+export default function DashboardHeader({ onNewAnalysis, domain, lastAnalysis, actionLabel = 'Nuevo análisis', actionDisabled = false, domainVerified = false, organizationName, showAction = true }: HeaderProps) {
   return (
     <header className="dashboard-topbar proposal-topbar">
       <div>
@@ -23,10 +24,10 @@ export default function DashboardHeader({ onNewAnalysis, domain, lastAnalysis, a
       </div>
       <div className="proposal-top-actions">
         <span className="analysis-status"><span aria-hidden="true" />Último análisis: {lastAnalysis ?? demoProject.lastAnalysis}</span>
-        <button className="new-analysis-button" type="button" aria-label={actionLabel} onClick={onNewAnalysis} disabled={actionDisabled}>
+        {showAction && <button className="new-analysis-button" type="button" aria-label={actionLabel} onClick={onNewAnalysis} disabled={actionDisabled}>
           <span className="analysis-refresh" aria-hidden="true">↻</span>
           <b>{actionLabel}</b>
-        </button>
+        </button>}
       </div>
     </header>
   )

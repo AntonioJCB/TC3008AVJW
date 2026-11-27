@@ -65,12 +65,12 @@ export const historyEvents: HistoryEvent[] = [
   },
   {
     id: 'public-admin', kind: 'finding', date: 'Hoy', time: '10:24', title: 'Panel administrativo expuesto', detail: 'admin.empresa.com',
-    context: 'Shodan', contextDetail: 'Servicio HTTPS confirmado', impact: '+20', impactDetail: 'Impacto bruto',
+    context: 'fuente histórica retirada', contextDetail: 'Servicio HTTPS confirmado', impact: '+20', impactDetail: 'Impacto bruto',
     impactTone: 'critical', status: 'Nuevo', followUp: true, critical: true,
   },
   {
-    id: 'shodan-partial', kind: 'source', date: 'Hoy', time: '10:17', title: 'Cobertura parcial de Shodan', detail: 'El análisis continuó con resultados disponibles',
-    context: 'Shodan', contextDetail: 'Tiempo de espera agotado', impact: '—', impactDetail: 'Sin cambio',
+    id: 'source-partial', kind: 'source', date: 'Hoy', time: '10:17', title: 'Cobertura parcial de fuente histórica retirada', detail: 'El análisis continuó con resultados disponibles',
+    context: 'fuente histórica retirada', contextDetail: 'Tiempo de espera agotado', impact: '—', impactDetail: 'Sin cambio',
     impactTone: 'neutral', status: 'Revisar', followUp: true,
   },
   {
@@ -85,7 +85,7 @@ export const historyEvents: HistoryEvent[] = [
   },
   {
     id: 'new-ip', kind: 'asset', date: '27 sep', time: '08:09', title: 'Nueva IP pública observada', detail: '189.203.•••.••',
-    context: 'DNS · Shodan', contextDetail: '3 servicios asociados', impact: '+6', impactDetail: 'Risk Score',
+    context: 'DNS · fuente histórica retirada', contextDetail: '3 servicios asociados', impact: '+6', impactDetail: 'Risk Score',
     impactTone: 'warning', status: 'Confirmado', followUp: true,
   },
   {
@@ -120,7 +120,7 @@ export const historyEvents: HistoryEvent[] = [
   },
   {
     id: 'public-legacy', kind: 'finding', date: '25 sep', time: '14:16', title: 'Servicio heredado accesible', detail: '189.203.•••.••:8080',
-    context: 'Shodan', contextDetail: 'Puerto 8080 responde', impact: '+8', impactDetail: 'Impacto bruto',
+    context: 'fuente histórica retirada', contextDetail: 'Puerto 8080 responde', impact: '+8', impactDetail: 'Impacto bruto',
     impactTone: 'warning', status: 'Nuevo', followUp: true,
   },
   {

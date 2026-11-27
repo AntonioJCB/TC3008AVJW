@@ -1,7 +1,8 @@
 // Datos locales de la maqueta: cada contador se calcula desde esta lista.
 export type FindingSeverity = 'critical' | 'high' | 'medium' | 'low'
-export type FindingStatus = 'Nuevo' | 'Abierto' | 'Revisado' | 'Aceptado'
-export type FindingFilter = FindingSeverity | 'all'
+export type FindingStatus = 'Nuevo' | 'Abierto' | 'Revisado' | 'Aceptado' | 'Resuelto'
+export type EvidenceLevel = 'confirmada' | 'potencial' | 'sin_clasificar'
+export type FindingFilter = FindingSeverity | EvidenceLevel | 'all'
 
 export interface FindingRecord {
   id: string
@@ -16,10 +17,21 @@ export interface FindingRecord {
   impact: number | null
   traceFinding: string
   traceEvidence: string
+  pendingRevalidation?: boolean
+  evidenceLevel?: EvidenceLevel
+  ruleActive?: boolean | null
+  potentialImpact?: number | null
+  nonConfirmationReason?: string | null
+  ageDays?: number | null
+  contributesTo?: 'confirmado' | 'potencial' | 'ninguno'
 }
 
 export const severityLabels: Record<FindingSeverity, string> = {
   critical: 'Crítico', high: 'Alto', medium: 'Medio', low: 'Bajo',
+}
+
+export const evidenceLabels: Record<EvidenceLevel, string> = {
+  confirmada: 'Confirmada', potencial: 'Potencial', sin_clasificar: 'Sin clasificar',
 }
 
 export const findingFilters: { value: FindingFilter; label: string }[] = [
@@ -28,24 +40,27 @@ export const findingFilters: { value: FindingFilter; label: string }[] = [
   { value: 'high', label: 'Altos' },
   { value: 'medium', label: 'Medios' },
   { value: 'low', label: 'Bajos' },
+  { value: 'confirmada', label: 'Confirmados' },
+  { value: 'potencial', label: 'Potenciales' },
+  { value: 'sin_clasificar', label: 'Sin clasificar' },
 ]
 
 export const mockFindings: FindingRecord[] = [
   {
     id: 'public-admin', title: 'Panel administrativo expuesto', asset: 'admin.empresa.com', severity: 'critical',
-    rule: 'PUBLIC_ADMIN_SERVICE', sources: ['crt.sh', 'Shodan'], confidence: 92, status: 'Nuevo',
+    rule: 'PUBLIC_ADMIN_SERVICE', sources: ['crt.sh'], confidence: 92, status: 'Nuevo',
     description: 'El activo acepta conexiones públicas y coincide con una regla de acceso administrativo.',
     impact: 20, traceFinding: 'Panel público', traceEvidence: 'Puerto 443 · título detectado',
   },
   {
     id: 'public-dev', title: 'Entorno de desarrollo accesible', asset: 'dev.empresa.com', severity: 'critical',
-    rule: 'PUBLIC_DEV_ENV', sources: ['SpiderFoot', 'Shodan'], confidence: 90, status: 'Nuevo',
+    rule: 'PUBLIC_DEV_ENV', sources: ['SpiderFoot'], confidence: 90, status: 'Nuevo',
     description: 'Un entorno de desarrollo responde desde internet y expone servicios que requieren revisión.',
     impact: 18, traceFinding: 'Entorno público', traceEvidence: 'Servicio DEV · acceso externo',
   },
   {
     id: 'legacy-service', title: 'Servicio heredado expuesto', asset: '189.203.•••.••:8080', severity: 'high',
-    rule: 'LEGACY_PUBLIC_SERVICE', sources: ['Shodan', 'SpiderFoot'], confidence: 87, status: 'Abierto',
+    rule: 'LEGACY_PUBLIC_SERVICE', sources: ['SpiderFoot'], confidence: 87, status: 'Abierto',
     description: 'Un servicio heredado continúa accesible desde la IP pública observada.',
     impact: 12, traceFinding: 'Servicio público', traceEvidence: 'Puerto 8080 · banner detectado',
   },
@@ -69,13 +84,13 @@ export const mockFindings: FindingRecord[] = [
   },
   {
     id: 'admin-origin', title: 'Acceso administrativo sin restricción de origen', asset: 'admin.empresa.com', severity: 'critical',
-    rule: 'ADMIN_ORIGIN_UNRESTRICTED', sources: ['Shodan', 'SpiderFoot'], confidence: 93, status: 'Abierto',
+    rule: 'ADMIN_ORIGIN_UNRESTRICTED', sources: ['SpiderFoot'], confidence: 93, status: 'Abierto',
     description: 'La interfaz administrativa no muestra una restricción de origen en la evidencia de ejemplo.',
     impact: 16, traceFinding: 'Acceso amplio', traceEvidence: 'Respuesta HTTP · origen público',
   },
   {
     id: 'database-port', title: 'Puerto de base de datos accesible', asset: '189.203.•••.••:5432', severity: 'high',
-    rule: 'PUBLIC_DATABASE_PORT', sources: ['Shodan'], confidence: 88, status: 'Abierto',
+    rule: 'PUBLIC_DATABASE_PORT', sources: [], confidence: 88, status: 'Abierto',
     description: 'La IP pública presenta un puerto de base de datos que requiere validar su alcance.',
     impact: 11, traceFinding: 'Servicio de datos', traceEvidence: 'Puerto 5432 · banner detectado',
   },
@@ -87,7 +102,7 @@ export const mockFindings: FindingRecord[] = [
   },
   {
     id: 'api-debug', title: 'Información de depuración visible', asset: 'api.empresa.com', severity: 'high',
-    rule: 'PUBLIC_DEBUG_INFO', sources: ['SpiderFoot', 'Shodan'], confidence: 82, status: 'Abierto',
+    rule: 'PUBLIC_DEBUG_INFO', sources: ['SpiderFoot'], confidence: 82, status: 'Abierto',
     description: 'Una respuesta del API muestra detalles técnicos que conviene retirar de la vista pública.',
     impact: 8, traceFinding: 'Detalle técnico', traceEvidence: 'Respuesta API · mensaje de depuración',
   },

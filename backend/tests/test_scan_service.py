@@ -2,12 +2,13 @@ import asyncio
 import logging
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
+from httpx import ReadError
 
 from app import scan_service
-from app.scan_service import SOURCE_NAMES, _execute, compute_scan_state, run_scan_job, scan_message
+from app.scan_service import SOURCE_NAMES, _execute, calculate_risk_with_retry, compute_scan_state, run_scan_job, scan_message
 
 OK = {"estado": "completado"}
 KO = {"estado": "fallido", "error": "HTTP 403 from api.platform.censys.io"}
@@ -18,11 +19,24 @@ def resultados(**estados):
 
 
 class EstadoDelEscaneoTests(unittest.TestCase):
+    def test_crtsh_deshabilitado_no_impide_completar_fuentes_habilitadas(self):
+        rows = {"crt.sh": {"estado": "deshabilitado", "error": "Fuente deshabilitada temporalmente: CT"},
+                "Censys": OK, "theHarvester": OK, "SpiderFoot": OK,
+                "Web": {"estado": "deshabilitado", "error": "Fuente deshabilitada temporalmente: sin consentimiento"}}
+        self.assertEqual(compute_scan_state(rows), "completado")
+        message = scan_message("completado", rows)
+        self.assertIn("3 fuentes habilitadas", message)
+        self.assertIn("Deshabilitadas/no evaluadas: crt.sh, Web", message)
+
     def test_todas_bien_es_completado(self):
         self.assertEqual(compute_scan_state({n: OK for n in SOURCE_NAMES}), "completado")
 
     def test_una_falla_es_incompleto(self):
         self.assertEqual(compute_scan_state({**{n: OK for n in SOURCE_NAMES}, "Censys": KO}), "incompleto")
+    def test_web_opcional_no_altera_estado_si_no_se_ejecuta(self):
+        self.assertIn("Web", SOURCE_NAMES)
+        rows = {**{n: OK for n in SOURCE_NAMES}, "Web": {"estado": "deshabilitado", "error": "Fuente deshabilitada temporalmente: sin consentimiento"}}
+        self.assertEqual(compute_scan_state(rows), "completado")
 
     def test_tres_fallan_sigue_siendo_incompleto(self):
         r = {n: KO for n in SOURCE_NAMES}
@@ -36,17 +50,30 @@ class EstadoDelEscaneoTests(unittest.TestCase):
         self.assertEqual(compute_scan_state({"crt.sh": OK}), "incompleto")
         self.assertEqual(compute_scan_state({}), "fallido")
 
+    def test_theharvester_fallido_con_jsonl_conserva_respuesta_cruda(self):
+        client = MagicMock()
+        outcome = {"estado": "fallido", "contenido": {"items": [], "runs": [{"target": "ejemplo.com"}]}, "error": "cuota agotada"}
+        summary = {"resultado_crudo_id": "raw-id", "ya_procesado": False, "observaciones_generadas": 0,
+                   "activos_nuevos": 0, "activos_existentes": 0, "observaciones_nuevas": 0,
+                   "observaciones_duplicadas": 0, "descartadas": {}}
+        with (patch.object(scan_service, "ingestar_resultado", return_value=summary) as ingest,
+              patch.object(scan_service, "_execute", return_value=[])):
+            stored = scan_service._persist_source(client, "org", "scan", "source", "theHarvester", "ejemplo.com", outcome)
+        ingest.assert_called_once()
+        self.assertEqual(stored["resultado_crudo_id"], "raw-id")
+        self.assertEqual(stored["estado"], "fallido")
+
 
 class MensajesTests(unittest.TestCase):
     def test_incompleto_dice_cual_fallo_y_cuales_no(self):
         r = {**{n: OK for n in SOURCE_NAMES}, "Censys": KO}
         mensaje = scan_message("incompleto", r)
         self.assertIn("Fallaron: Censys (HTTP 403 from api.platform.censys.io)", mensaje)
-        self.assertIn("Terminaron correctamente: crt.sh, theHarvester, SpiderFoot", mensaje)
+        self.assertIn("Terminaron correctamente: crt.sh, theHarvester, SpiderFoot, Web", mensaje)
 
     def test_completado_en_curso_y_pendiente(self):
-        self.assertIn("4 fuentes terminaron correctamente", scan_message("completado", {n: OK for n in SOURCE_NAMES}))
-        self.assertIn("2 de 4", scan_message("ejecutando", {"crt.sh": OK, "Censys": KO, "SpiderFoot": {"estado": "ejecutando"}}))
+        self.assertIn(f"{len(SOURCE_NAMES)} fuentes habilitadas terminaron correctamente", scan_message("completado", {n: OK for n in SOURCE_NAMES}))
+        self.assertIn(f"2 de {len(SOURCE_NAMES)}", scan_message("ejecutando", {"crt.sh": OK, "Censys": KO, "SpiderFoot": {"estado": "ejecutando"}}))
         self.assertIn("pendiente", scan_message("pendiente", {}))
 
     def test_un_error_largo_se_recorta(self):
@@ -79,13 +106,73 @@ class ExecuteTests(unittest.TestCase):
 
 class RunScanJobTests(unittest.IsolatedAsyncioTestCase):
     SETTINGS = SimpleNamespace(
-        censys_pat=None, theharvester_bin="x", theharvester_sources="x", spiderfoot_url="http://x",
+        censys_pat=None, web_enabled=True, scan_max_targets=20, nvd_api_key=None, theharvester_bin="x", theharvester_sources="x", spiderfoot_url="http://x",
         spiderfoot_modules="sfp_dnsresolve,sfp_dnsraw,sfp_robtex,sfp_crobat_api",
         request_timeout_seconds=1, process_timeout_seconds=1, spiderfoot_timeout_seconds=1, spiderfoot_poll_seconds=1,
         scan_timeout_seconds=5, crtsh_retries=1, crtsh_timeout_seconds=60, censys_max_ips=1, censys_pause_seconds=0,
     )
     SCAN = {"id": "scan-1", "organizacion_id": "org-1"}
     IDS = {n: f"id-{n}" for n in SOURCE_NAMES}
+
+    def test_crtsh_fallido_guarda_reporte_sin_generar_observaciones(self):
+        summary = {
+            "resultado_crudo_id": "raw-crt", "ya_procesado": False,
+            "observaciones_generadas": 0, "activos_nuevos": 0, "activos_existentes": 0,
+            "observaciones_nuevas": 0, "observaciones_duplicadas": 0, "descartadas": {},
+        }
+        outcome = {"estado": "fallido", "error": "HTTP 502", "contenido": {
+            "version": 1, "entries": [], "queries": [{"query": "%.example.com", "status": "error"}],
+            "covered_targets": ["example.com"],
+        }}
+        with (patch.object(scan_service, "ingestar_resultado", return_value=summary) as ingest,
+              patch.object(scan_service, "_execute")):
+            saved = scan_service._persist_source(
+                MagicMock(), "org", "scan", "source", "crt.sh", "example.com", outcome,
+            )
+        ingest.assert_called_once()
+        self.assertEqual(saved["estado"], "fallido")
+        self.assertEqual(saved["resultado_crudo_id"], "raw-crt")
+        self.assertEqual(saved["observaciones_generadas"], 0)
+
+    def test_ampliacion_conserva_contadores_sin_duplicar_observaciones(self):
+        previous = {
+            "estado": "completado", "resultado_crudo_id": "raw-first", "ya_procesado": False,
+            "observaciones_generadas": 2, "activos_nuevos": 1, "activos_existentes": 1,
+            "observaciones_nuevas": 2, "observaciones_duplicadas": 0, "descartadas": {},
+        }
+        cumulative = {
+            "resultado_crudo_id": "raw-final", "ya_procesado": False,
+            "observaciones_generadas": 4, "activos_nuevos": 1, "activos_existentes": 3,
+            "observaciones_nuevas": 1, "observaciones_duplicadas": 3, "descartadas": {},
+        }
+        with (
+            patch.object(scan_service, "ingestar_resultado", return_value=cumulative),
+            patch.object(scan_service, "_execute"),
+        ):
+            saved = scan_service._persist_source(
+                MagicMock(), "org", "scan", "source", "SpiderFoot", "example.com",
+                {"estado": "completado", "contenido": [], "error": None}, previous,
+            )
+        self.assertEqual(saved["observaciones_generadas"], 4)
+        self.assertEqual(saved["observaciones_nuevas"], 3)
+        self.assertEqual(saved["observaciones_duplicadas"], 1)
+        self.assertEqual(saved["activos_nuevos"], 2)
+        self.assertEqual(saved["activos_existentes"], 2)
+
+    async def test_riesgo_se_reintenta_si_supabase_corta_la_conexion(self):
+        with (
+            patch.object(scan_service, "calcular_y_guardar", side_effect=[ReadError("red"), None]) as risk,
+            patch.object(scan_service.asyncio, "sleep") as sleep,
+        ):
+            await calculate_risk_with_retry(object(), "scan-1")
+        self.assertEqual(risk.call_count, 2)
+        sleep.assert_awaited_once_with(1.0)
+
+    async def test_error_del_motor_no_se_reintenta_como_error_de_red(self):
+        with patch.object(scan_service, "calcular_y_guardar", side_effect=ValueError("regla inválida")) as risk:
+            with self.assertRaises(ValueError):
+                await calculate_risk_with_retry(object(), "scan-1")
+        risk.assert_called_once()
 
     async def correr(self, estados, riesgo_falla=False, persistencia_falla=()):
         async def runner_ok(domain):
@@ -96,7 +183,7 @@ class RunScanJobTests(unittest.IsolatedAsyncioTestCase):
 
         runners = {n: (runner_ok if estados[n] == "ok" else runner_ko) for n in SOURCE_NAMES}
 
-        def persist(client, org, scan, source_id, name, domain, outcome):
+        def persist(client, org, scan, source_id, name, domain, outcome, previous=None, nvd_api_key=None):
             if name in persistencia_falla:
                 raise RuntimeError("base de datos caída")
             return {"estado": outcome["estado"], "error": outcome["error"]}
@@ -119,15 +206,49 @@ class RunScanJobTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(finish.call_args.args[2], "completado")
         riesgo.assert_called_once()
 
+    async def test_flujo_completo_sin_crtsh_conserva_theharvester_y_completa(self):
+        settings = SimpleNamespace(**{**vars(self.SETTINGS), "crtsh_enabled": False})
+        outcomes = {
+            "Censys": {"estado": "completado", "error": None, "contenido": {"hosts": [], "dns": {"dominio": "ejemplo.com", "ips": []}}, "consultas": []},
+            "theHarvester": {"estado": "completado", "error": None, "contenido": {"items": [1, 2, 3]}, "consultas": []},
+            "SpiderFoot": {"estado": "completado", "error": None, "contenido": [], "consultas": []},
+            "Web": {"estado": "completado", "error": None, "contenido": [], "consultas": []},
+        }
+
+        async def collect(_domain, _settings, *, on_result, **_options):
+            for name, outcome in outcomes.items():
+                await on_result(name, outcome)
+            return outcomes
+
+        def persist(_client, _org, _scan, _source_id, name, _domain, outcome, previous=None, nvd_api_key=None):
+            return {"estado": outcome["estado"], "error": outcome["error"],
+                    "observaciones_generadas": 3 if name == "theHarvester" else 76}
+
+        with (
+            patch.object(scan_service, "run_all", side_effect=collect),
+            patch.object(scan_service, "_persist_source", side_effect=persist),
+            patch.object(scan_service, "_persist_disabled_source", return_value={
+                "estado": "deshabilitado", "error": "Fuente deshabilitada temporalmente: CT",
+            }),
+            patch.object(scan_service, "inventory", return_value=[]),
+            patch.object(scan_service, "build_coverage", return_value={"objetivos_pendientes": []}),
+            patch.object(scan_service, "_finish_scan", return_value=True),
+            patch.object(scan_service, "audit"),
+            patch.object(scan_service, "calcular_y_guardar"),
+        ):
+            state = await run_scan_job(object(), settings, self.SCAN, self.IDS, "ejemplo.com")
+        self.assertEqual(state, "completado")
+
+
     async def test_una_falla_las_otras_se_guardan_y_queda_incompleto(self):
         estado, persist, finish, riesgo = await self.correr({**{n: "ok" for n in SOURCE_NAMES}, "Censys": "ko"})
         self.assertEqual(estado, "incompleto")
-        self.assertEqual(persist.call_count, 4)  # también se registra la que falló
+        self.assertEqual(persist.call_count, len(SOURCE_NAMES))
         self.assertEqual(finish.call_args.args[2], "incompleto")
         detalle = self.auditoria.call_args.kwargs["detail"]
         self.assertEqual(self.auditoria.call_args.kwargs["action"], "escaneo_finalizado")
         self.assertEqual(list(detalle["fuentes_fallidas"]), ["Censys"])
-        self.assertEqual(detalle["fuentes_ok"], ["crt.sh", "theHarvester", "SpiderFoot"])
+        self.assertEqual(detalle["fuentes_ok"], ["crt.sh", "theHarvester", "SpiderFoot", "Web"])
 
     async def test_todas_fallan_es_fallido_pero_igual_se_calcula_el_riesgo_parcial(self):
         estado, _, finish, riesgo = await self.correr({n: "ko" for n in SOURCE_NAMES})
@@ -162,7 +283,7 @@ class RunScanJobTests(unittest.IsolatedAsyncioTestCase):
                 stopped.set()
                 raise
 
-        def persist(_client, _org, _scan, _source_id, name, _domain, outcome):
+        def persist(_client, _org, _scan, _source_id, name, _domain, outcome, previous=None, nvd_api_key=None):
             if name == "crt.sh":
                 loop.call_soon_threadsafe(saved.set)
             return {"estado": outcome["estado"], "error": outcome["error"]}

@@ -16,13 +16,16 @@ function containOffset(offset: number, viewport: number, canvas: number) {
   return Math.min(0, Math.max(viewport - canvas, offset))
 }
 
-export function useRelationGraphNavigation(contentSize: Size) {
+export function useRelationGraphNavigation(contentSize: Size, liveGraph: boolean) {
   const viewportRef = useRef<HTMLDivElement>(null)
+  const fittedGraphRef = useRef<boolean | null>(null)
   const pointerRef = useRef<{ id: number; x: number; y: number } | null>(null)
   const [canvas, setCanvas] = useState<Size>(contentSize)
   const [fitScale, setFitScale] = useState(1)
   const [view, setView] = useState<View>({ x: 0, y: 0, scale: 1 })
   const [dragging, setDragging] = useState(false)
+  const contentWidth = contentSize.width
+  const contentHeight = contentSize.height
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current
@@ -32,25 +35,25 @@ export function useRelationGraphNavigation(contentSize: Size) {
       const width = viewport.clientWidth
       const height = viewport.clientHeight
       if (!width || !height) return
-      const nextCanvas = {
-        width: Math.max(contentSize.width, width),
-        height: Math.max(contentSize.height, height),
-      }
+      const nextCanvas = { width: contentWidth, height: contentHeight }
       const scale = Math.min(width / nextCanvas.width, height / nextCanvas.height)
-      setCanvas(nextCanvas)
+      setCanvas((current) => current.width === nextCanvas.width && current.height === nextCanvas.height ? current : nextCanvas)
       setFitScale(scale)
-      setView({
-        x: centeredOffset(width, nextCanvas.width * scale),
-        y: centeredOffset(height, nextCanvas.height * scale),
-        scale,
-      })
+      if (fittedGraphRef.current === null || (liveGraph && !fittedGraphRef.current)) {
+        setView({
+          x: centeredOffset(width, nextCanvas.width * scale),
+          y: centeredOffset(height, nextCanvas.height * scale),
+          scale,
+        })
+        fittedGraphRef.current = liveGraph
+      }
     }
 
     updateSize()
     const observer = new ResizeObserver(updateSize)
     observer.observe(viewport)
     return () => observer.disconnect()
-  }, [contentSize])
+  }, [contentWidth, contentHeight, liveGraph])
 
   const zoomAt = useCallback((factor: number, point?: { x: number; y: number }) => {
     const viewport = viewportRef.current

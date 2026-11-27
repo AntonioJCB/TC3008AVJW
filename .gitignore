@@ -1,6 +1,11 @@
 # Environment variables
 .env
 .env.local
+spiderfoot.env
+deploy/spiderfoot-ca/*.crt
+deploy/spiderfoot-ca/*.pem
 database/.env
 database/node_modules/
 database/dist/
+__pycache__/
+*.py[cod]

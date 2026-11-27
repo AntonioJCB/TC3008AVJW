@@ -1,6 +1,7 @@
 import type { Worksheet } from 'exceljs'
 import type { ClientData, Risk, Scan } from './clientData'
-import { liveFindings } from './liveAdapters'
+import { liveAssets, liveFindings } from './liveAdapters'
+import { isActiveSource } from './sourcePolicy'
 
 // Colores del libro (ARGB). Se mantienen sobrios para que el archivo se imprima bien.
 const HEADER_FILL = 'FF12303F'
@@ -83,8 +84,10 @@ export async function exportOverviewToExcel(data: ClientData, latest: Scan | nul
   const risk = riskFor(data, latest)
   const findings = liveFindings(data)
   const sourceResults = new Map(data.sourceResults.map((result) => [result.fuente_id, result]))
-  const consulted = data.sourceResults.filter((result) => result.estado === 'completado').length
-  const coverage = data.sources.length ? Math.round(consulted / data.sources.length * 100) : 0
+  const activeSources = data.sources.filter((source) => isActiveSource(source.nombre))
+  const activeIds = new Set(activeSources.map((source) => source.id))
+  const consulted = data.sourceResults.filter((result) => activeIds.has(result.fuente_id) && result.estado === 'completado' && !result.error).length
+  const coverage = activeSources.length ? Math.round(consulted / activeSources.length * 100) : 0
 
   const workbook = new Workbook()
   workbook.creator = 'BaxterSec'
@@ -121,11 +124,11 @@ export async function exportOverviewToExcel(data: ClientData, latest: Scan | nul
   addSectionTitle(summary, 'Resumen de la organización')
   const criticalCount = findings.filter((finding) => finding.severity === 'critical').length
   addTable(summary, ['Indicador', 'Valor'], [
-    ['Activos históricos', data.assetCount],
-    ['Hallazgos históricos', data.findingCount],
-    ['Críticos históricos', criticalCount],
+    ['Activos en inventario', data.assetCount],
+    ['Hallazgos del último análisis', data.findingCount],
+    ['Críticos del último análisis', criticalCount],
     ['Análisis', data.scanCount],
-    ['Hallazgos abiertos históricos', data.findings.filter((item) => item.estado === 'abierto').length],
+    ['Hallazgos abiertos del último análisis', data.findings.filter((item) => item.estado === 'abierto').length],
     ['Observaciones del último análisis', data.observations.length],
     ['Fuentes completadas', consulted],
     ['Cobertura de fuentes (%)', coverage],
@@ -172,21 +175,25 @@ export async function exportOverviewToExcel(data: ClientData, latest: Scan | nul
 
   // ───────── 4. Activos ─────────
   const assetsSheet = workbook.addWorksheet('Activos')
-  setWidths(assetsSheet, [18, 46, 22, 22])
+  setWidths(assetsSheet, [18, 46, 25, 25, 30, 30, 22, 22])
   addSectionTitle(assetsSheet, 'Inventario por tipo')
   const types = [...new Set(data.assets.map((asset) => asset.tipo))]
   addTable(assetsSheet, ['Tipo', 'Cantidad'], types.map((type) => [type, data.assets.filter((asset) => asset.tipo === type).length]))
   assetsSheet.addRow([])
   addSectionTitle(assetsSheet, 'Listado de activos')
-  addTable(assetsSheet, ['Tipo', 'Valor', 'Visto por primera vez', 'Visto por última vez'],
-    data.assets.map((asset) => [asset.tipo, asset.valor, toDate(asset.visto_primera_vez), toDate(asset.visto_ultima_vez)]))
+  const visibleAssets = liveAssets(data)
+  addTable(assetsSheet, ['Tipo', 'Valor', 'Exposición', 'Hallazgos de riesgo', 'Fuentes del último análisis', 'Fuentes históricas', 'Visto por primera vez', 'Visto por última vez'],
+    data.assets.map((asset) => {
+      const visible = visibleAssets.find((item) => item.id === asset.id)!
+      return [asset.tipo, asset.valor, visible.exposure, visible.findings, visible.sources.join(', '), visible.historicalSources?.join(', ') ?? '', toDate(asset.visto_primera_vez), toDate(asset.visto_ultima_vez)]
+    }))
   if (!data.assets.length) assetsSheet.addRow(['Aún no hay activos descubiertos.'])
 
   // ───────── 5. Fuentes ─────────
   const sourcesSheet = workbook.addWorksheet('Fuentes')
   setWidths(sourcesSheet, [24, 18, 16, 16, 14, 14, 44])
   addTable(sourcesSheet, ['Fuente', 'Tipo de acceso', 'Estado (último análisis)', 'Observaciones generadas', 'Nuevas', 'Duplicadas', 'Error'],
-    data.sources.map((source) => {
+    activeSources.map((source) => {
       const result = sourceResults.get(source.id)
       return [source.nombre, source.tipo_acceso, result?.estado ?? 'Sin ejecutar', result?.observaciones_generadas ?? null, result?.observaciones_nuevas ?? null, result?.observaciones_duplicadas ?? null, result?.error ?? null]
     }))

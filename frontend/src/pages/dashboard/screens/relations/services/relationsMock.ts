@@ -23,6 +23,7 @@ export interface RelationEdge {
   from: string
   to: string
   critical?: boolean
+  historical?: boolean
 }
 
 export interface PriorityRoute {
@@ -35,7 +36,7 @@ export interface PriorityRoute {
 }
 
 // The board can grow with the number of entities without changing its zoom controls.
-export const relationCanvas = { width: 1080, height: 450 }
+export const relationCanvas = { width: 1080, height: 620 }
 
 export const relationNodes: RelationNode[] = [
   {
@@ -51,12 +52,12 @@ export const relationNodes: RelationNode[] = [
   {
     id: 'admin', name: 'admin.empresa.com', badge: 'ADM', kind: 'Servicio administrativo', caption: 'Acceso público', impact: 'Riesgo crítico · +20',
     description: 'Panel administrativo visible desde internet y asociado a una dirección pública.',
-    sources: ['crt.sh', 'Shodan'], related: 'empresa.com · IP pública · HTTPS', tone: 'critical', x: 77, y: 21,
+    sources: ['crt.sh'], related: 'empresa.com · IP pública · HTTPS', tone: 'critical', x: 77, y: 21,
   },
   {
     id: 'ip', name: '189.203.•••.••', badge: 'IP', kind: 'IP pública', caption: '3 servicios', impact: 'Riesgo alto · +6',
     description: 'Infraestructura pública relacionada con el panel administrativo y otros servicios.',
-    sources: ['Shodan', 'DNS'], related: 'admin.empresa.com · 3 servicios', tone: 'service', x: 85, y: 63,
+    sources: ['DNS'], related: 'admin.empresa.com · 3 servicios', tone: 'service', x: 85, y: 63,
   },
   {
     id: 'identity', name: 'ops@empresa.com', badge: 'ID', kind: 'Identidad', caption: 'Fuente pública', impact: 'Riesgo alto · +3',
@@ -66,7 +67,7 @@ export const relationNodes: RelationNode[] = [
   {
     id: 'dev', name: 'dev.empresa.com', badge: 'DEV', kind: 'Entorno de desarrollo', caption: 'Activo nuevo', impact: 'Riesgo crítico · +15',
     description: 'Entorno de desarrollo público conectado al dominio y a un servicio observado.',
-    sources: ['SpiderFoot', 'Shodan'], related: 'empresa.com · servicio 8080', tone: 'domain', x: 18, y: 73,
+    sources: ['SpiderFoot'], related: 'empresa.com · servicio 8080', tone: 'domain', x: 18, y: 73,
   },
   {
     id: 'cert', name: 'Certificado SAN', badge: 'TLS', kind: 'Certificado', caption: '2 dominios', impact: 'Sin impacto directo',

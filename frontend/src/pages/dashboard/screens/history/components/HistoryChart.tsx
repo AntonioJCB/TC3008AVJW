@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import DateFilterPicker from '../../../components/DateFilterPicker'
 import { historyRanges, type HistoryRange, type HistoryScan } from '../services/historyMock'
 
 const ranges: HistoryRange[] = ['7D', '30D', '90D']
@@ -67,8 +68,8 @@ export default function HistoryChart({ scans }: { scans?: HistoryScan[] }) {
     <div className="history-chart-heading">
       <h2 id="history-chart-title">EVOLUCIÓN DEL RISK SCORE</h2>
       {live ? <div className="history-date-filter" role="group" aria-label="Filtrar análisis por fechas">
-        <label>Desde<input type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => setDateFrom(event.target.value)} /></label>
-        <label>Hasta<input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} /></label>
+        <DateFilterPicker label="Desde" value={dateFrom} max={dateTo || undefined} onChange={setDateFrom} />
+        <DateFilterPicker label="Hasta" value={dateTo} min={dateFrom || undefined} onChange={setDateTo} />
         {hasDateFilter && <button type="button" onClick={() => { setDateFrom(''); setDateTo('') }}>Ver todo</button>}
       </div> : <div className="history-range" role="group" aria-label="Rango histórico">
         {ranges.map((option) => <button key={option} type="button" aria-pressed={demoRange === option} className={demoRange === option ? 'active' : ''} onClick={() => setDemoRange(option)}>{option}</button>)}

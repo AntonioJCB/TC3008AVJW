@@ -36,8 +36,18 @@ class CensysCollectorTests(unittest.IsolatedAsyncioTestCase):
     async def test_pipeline_por_defecto_sustituye_shodan(self):
         with patch.object(orchestrators, "run_crtsh", return_value=[]), patch.object(orchestrators, "run_censys", return_value=[]), patch.object(orchestrators, "run_theharvester", return_value=[]), patch.object(orchestrators, "run_spiderfoot", return_value=[]):
             results = await run_all(DOMAIN, self.config())
-        self.assertEqual(set(results), {"crt.sh", "Censys", "theHarvester", "SpiderFoot"})
+        self.assertEqual(set(results), {"crt.sh", "Censys", "theHarvester", "SpiderFoot", "Web"})
 
+    async def test_censys_consulta_solo_dominio_principal_con_varios_objetivos(self):
+        consulted = []
+
+        async def censys(target):
+            consulted.append(target)
+            return orchestrators.RunnerOutput({"hosts": [], "dns": {"dominio": target, "ips": []}})
+
+        await run_all(DOMAIN, self.config(), runners={"Censys": censys},
+                      targets=[DOMAIN, "api.empresa.test", "dev.empresa.test"], max_targets=3)
+        self.assertEqual(consulted, [DOMAIN])
     async def test_dns_deduplica_y_excluye_ips_privadas_y_reservadas(self):
         records = [(None, None, None, None, (ip, 0)) for ip in [IP, IP, "127.0.0.1", "192.168.1.1", "203.0.113.10", "2606:4700:4700::1111"]]
         with patch.object(asyncio.get_running_loop(), "getaddrinfo", return_value=records):
@@ -128,7 +138,7 @@ class CensysNormalizationTests(unittest.TestCase):
         rows = [Obs(str(i), o["valor"], o["tipo"], o["valor"], o["atributo"], o["datos"], "Censys", "f-censys") for i, o in enumerate(normal["observaciones"])]
         rules = [Regla("r1", "INFRA-001", "SSH", "infraestructura", "alta", 15), Regla("r2", "INFRA-003", "CVE", "infraestructura", "media", 8)]
         out = evaluar_riesgo(rows, rules, {"Censys": "completado"})
-        self.assertEqual({h.regla_codigo for h in out.hallazgos}, {"INFRA-001", "INFRA-003"})
+        self.assertEqual({h.regla_codigo for h in out.hallazgos}, {"INFRA-001"})
         self.assertGreater(out.puntaje.puntaje_global, 0)
         cve = next(o for o in normal["observaciones"] if o["atributo"] == "cve")
         self.assertIsNone(cve["datos"]["verificado"])

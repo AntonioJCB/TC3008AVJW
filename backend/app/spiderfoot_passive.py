@@ -14,7 +14,6 @@ MODULES = {
     "sfp_baxter_urlscan": "urlscan",
     "sfp_baxter_commoncrawl": "common_crawl",
     "sfp_baxter_rdap": "rdap",
-    "sfp_baxter_internetdb": "internetdb",
 }
 PASSIVE_DNS_MODULES = ("sfp_dnsresolve", "sfp_dnsraw", "sfp_robtex", "sfp_crobat_api")
 LEGACY_MODULES = ",".join(PASSIVE_DNS_MODULES)
@@ -62,7 +61,7 @@ def selected_modules(target, configured=DEFAULT_MODULES):
         address = None
     if address and not address.is_global:
         raise ValueError("SpiderFoot solo admite IP públicas autorizadas")
-    ip_providers = {"internetdb"}
+    ip_providers = set()
     domain_providers = {"urlscan", "google_dns_doh", "common_crawl", "rdap"}
     selected = [name for name in dict.fromkeys(names) if (
         name in MODULES and MODULES[name] in ip_providers if address
@@ -293,7 +292,7 @@ def _strings(value):
     return value
 
 
-def collect(provider, target, fetch, *, api_key="", internetdb_use="disabled",
+def collect(provider, target, fetch, *, api_key="",
             commoncrawl_indexes=2, commoncrawl_max_results=50, registrable_domain="",
             urlscan_detail_limit=3, urlscan_headers_max_age_days=90,
             commoncrawl_deadline_seconds=35, commoncrawl_retry_delay_seconds=0.5):
@@ -301,9 +300,6 @@ def collect(provider, target, fetch, *, api_key="", internetdb_use="disabled",
     report = {"profile": PROFILE, "provider": provider, "target": target,
               "status": "error", "query": "", "events": [], "results": 0,
               "checked_at": datetime.now(timezone.utc).isoformat(), "limitations": []}
-    if provider == "internetdb" and internetdb_use not in {"noncommercial", "licensed"}:
-        report.update(status="unavailable", error="InternetDB requiere declarar uso no comercial o licencia comercial en la configuración del módulo")
-        return report
     try:
         module = next(name for name, value in MODULES.items() if value == provider)
         selected_modules(target, module)
@@ -332,16 +328,10 @@ def collect(provider, target, fetch, *, api_key="", internetdb_use="disabled",
             }
             report["query"] = url + "?" + urlencode(params)
             report["authenticated"] = bool(api_key)
-        elif provider == "internetdb":
-            url, params = "https://internetdb.shodan.io/" + target, {}
-            report["query"] = url
         else:
             raise ValueError("Proveedor pasivo no admitido")
         code, data = fetch(url, params)
         report["http_status"] = code
-        if provider == "internetdb" and code == 404 and isinstance(data, dict) and data.get("detail") == "No information available":
-            report.update(status="empty", limitations=["La base no contiene información para esta IP; no implica ausencia de servicios."])
-            return report
         if code != 200:
             report["error"] = f"Proveedor respondió HTTP {code}; consulta no completada"
             return report
@@ -353,8 +343,6 @@ def collect(provider, target, fetch, *, api_key="", internetdb_use="disabled",
             _urlscan(data, report, fetch=fetch if api_key else None,
                      detail_limit=int(urlscan_detail_limit),
                      headers_max_age_days=int(urlscan_headers_max_age_days))
-        elif provider == "internetdb":
-            _internetdb(data, report)
         else:
             raise ValueError("Proveedor pasivo no admitido")
         if report["status"] == "error":
@@ -1534,19 +1522,3 @@ def _rdap_links(value):
     for link in result:
         unique.setdefault(link["href"], link)
     return list(unique.values())[:20]
-
-
-def _internetdb(data, report):
-    if data.get("ip") != report["target"] or not isinstance(data.get("ports"), list):
-        raise ValueError("IP o puertos inválidos")
-    report["results"] = 1
-    report["limitations"] = ["Datos agregados actualizados semanalmente, sin fecha por servicio ni banners. Los puertos no especifican transporte; no se atribuyen a TCP ni UDP. Las CVE mezclan verificadas y no verificadas; no puntúan sin corroboración."]
-    for port in data["ports"]:
-        if type(port) is not int or not 1 <= port <= 65535:
-            raise ValueError("Puerto inválido")
-        _event(report, "PROVIDER_PORT", str(port), transporte="no_indicado")
-    for cpe in _strings(data.get("cpes", [])):
-        _event(report, "SOFTWARE_USED", cpe)
-    for cve in _strings(data.get("vulns", [])):
-        if re.fullmatch(r"CVE-\d{4}-\d{4,}", cve, re.I):
-            _event(report, "VULNERABILITY_CVE_UNKNOWN", cve, verificado=False)

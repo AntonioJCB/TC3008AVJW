@@ -39,12 +39,17 @@
 .relation-graph-viewport.dragging { cursor: grabbing; }
 .relation-graph { position: absolute; top: 0; left: 0; overflow: hidden; transform-origin: top left; transition: transform .18s ease; will-change: transform; background-image: linear-gradient(to right, color-mix(in srgb, var(--line-soft) 45%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, var(--line-soft) 45%, transparent) 1px, transparent 1px); background-size: 57px 57px; }
 .relation-graph-viewport.dragging .relation-graph { transition: none; }
+.relation-historical-zone { position: absolute; right: 75px; left: 75px; height: 215px; border: 1px dashed var(--line); border-radius: 20px; background: color-mix(in srgb, var(--theme-surface-alt) 50%, transparent); pointer-events: none; }
+.relation-historical-zone span { position: absolute; top: 12px; left: 18px; color: var(--muted); font-size: 12px; font-weight: 750; letter-spacing: .04em; }
 .relation-edges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-.relation-edges line { stroke: var(--line); stroke-width: 1.6; stroke-dasharray: 5 5; vector-effect: non-scaling-stroke; opacity: .72; transition: stroke .22s ease, stroke-width .22s ease, opacity .22s ease; }
-.relation-edges line.critical { stroke: var(--risk-critical); stroke-width: 2.2; stroke-dasharray: none; }
-.relation-edges line.highlighted { stroke: var(--teal); stroke-width: 2.6; stroke-dasharray: none; opacity: 1; }
-.relation-edges line.critical.highlighted { stroke: var(--risk-critical); stroke-width: 3; }
-.relation-node { position: absolute; z-index: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; width: 154px; min-height: 110px; padding: 12px 13px; transform: translate(-50%, -50%); border: 1px solid var(--line); border-radius: 13px; background: var(--theme-surface); color: var(--ink); text-align: left; box-shadow: 0 8px 18px #0002; transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease, transform .2s ease; }
+.relation-edges path { fill: none; stroke: var(--line); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; opacity: .85; transition: stroke .22s ease, stroke-width .22s ease, opacity .22s ease; }
+.relation-edges path.dns { stroke: var(--teal); stroke-width: 2.2; }
+.relation-edges path.observed { stroke: var(--theme-active); stroke-dasharray: 5 4; }
+.relation-edges path.historical { opacity: .45; }
+.relation-edges path.critical { stroke: var(--risk-critical); stroke-width: 2.2; stroke-dasharray: none; }
+.relation-edges path.highlighted { stroke: var(--teal); stroke-width: 2.6; stroke-dasharray: none; opacity: 1; }
+.relation-edges path.critical.highlighted { stroke: var(--risk-critical); stroke-width: 3; }
+.relation-node { position: absolute; z-index: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 184px; height: 142px; padding: 11px 13px; transform: translate(-50%, -50%); border: 1px solid var(--line); border-radius: 13px; background: var(--theme-surface); color: var(--ink); text-align: left; box-shadow: 0 8px 18px #0002; transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease, transform .2s ease; }
 .relation-node:hover { z-index: 2; transform: translate(-50%, -50%) scale(1.025); border-color: var(--teal); }
 .relation-node.selected { z-index: 3; border-color: var(--teal); background: var(--theme-surface-alt); box-shadow: 0 0 0 2px color-mix(in srgb, var(--teal) 75%, transparent), 0 0 0 12px color-mix(in srgb, var(--teal) 12%, transparent), 0 0 38px 14px color-mix(in srgb, var(--teal) 32%, transparent); }
 .relation-node.tone-critical { border-color: var(--risk-critical); }
@@ -53,10 +58,11 @@
 .relation-node.tone-service > span { color: var(--bronze); }
 .relation-node.tone-identity > span { color: var(--coral); }
 .relation-node.tone-critical > span { color: var(--risk-critical); }
-.relation-node strong { max-width: 100%; overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.relation-node strong { display: -webkit-box; max-width: 100%; overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .relation-node small { max-width: 100%; overflow: hidden; color: var(--meta); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .relation-node .relation-node-source { max-width: 100%; overflow: hidden; color: var(--theme-active); text-overflow: ellipsis; }
-.relation-node.root { width: 174px; min-height: 114px; }
+.relation-node.root { width: 210px; }
+.relation-node.historical { border-style: dashed; background: var(--theme-field); }
 .relation-omitted { min-width: 0; padding: 18px 22px; border-radius: 12px; }
 .relation-omitted summary { color: var(--ink); font-size: 14px; font-weight: 800; cursor: pointer; }
 .relation-omitted p { max-width: 850px; margin: 12px 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
@@ -129,7 +135,7 @@
   .priority-routes-card { padding: 19px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .relation-edges line,
+  .relation-edges path,
   .relation-node,
   .relation-graph { transition: none; }
 }

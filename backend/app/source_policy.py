@@ -2,6 +2,14 @@
 
 ACTIVE_SOURCES = ("crt.sh", "theHarvester", "SpiderFoot", "Web")
 
+
+def enabled_runner_sources(*, crtsh_enabled: bool, web_enabled: bool) -> tuple[str, ...]:
+    """Colectores que el orquestador incorpora a un análisis nuevo."""
+    return tuple(name for name in ACTIVE_SOURCES if (
+        (name != "crt.sh" or crtsh_enabled)
+        and (name != "Web" or web_enabled)
+    ))
+
 DISABLED_SOURCE_STATE = "deshabilitado"
 DISABLED_SOURCE_PREFIX = "Fuente deshabilitada temporalmente:"
 CRTSH_DISABLED_REASON = (

@@ -288,16 +288,17 @@ def _actualizar_exposicion(
             )
             asset["exposicion"] = ETIQUETA_SEVERIDAD.get(severity, "Baja")
         elif asset.get("evaluado_seguridad") is True:
-            asset["exposicion"] = "Evaluado sin hallazgos"
+            asset["exposicion"] = "Evaluación parcial" if asset.get("evaluacion_parcial") else "Evaluado sin hallazgos"
         else:
             asset["exposicion"] = {
                 "fuera_alcance": "Fuera de alcance",
                 "sin_compatibilidad": "Sin evaluación compatible",
                 "historico_sintetico": "Histórico/sintético",
-            }.get(asset.get("clasificacion_exposicion"), "Sin evaluar")
+            }.get(asset.get("clasificacion_exposicion"), "Evaluación parcial" if asset.get("consultas") else "Sin evaluar")
         asset["hallazgos_vigentes"] = len(vigentes)
         asset["estado_cobertura"] = (
-            "evaluado" if asset.get("evaluado_seguridad") is True
+            "parcial" if asset.get("evaluacion_parcial") and asset.get("consultas")
+            else "evaluado" if asset.get("evaluado_seguridad") is True
             else "parcial" if asset.get("consultas")
             else asset.get("clasificacion_exposicion", "sin_evaluacion")
         )
@@ -320,14 +321,9 @@ def calcular_y_guardar(client: Any, scan_id: str, ahora: datetime | None = None,
          if obs.fuente in ACTIVE_SOURCES and obs.activo_id not in sinteticos], scope
     )
     source_states = cargar_estado_fuentes(client, scan_id)
-    active_web_evidence = source_states.get("Web") in {"completado", "parcial"} and any(
-        obs.fuente == "Web" and obs.datos.get("comprobacion_activa") is True
-        for obs in observaciones
-    )
-    # El catálogo conserva pesos y estado. Solo esta ejecución autorizada activa
-    # los evaluadores Web con evidencia actual; CT histórico permanece retirado.
+    # La activación y el peso proceden del catálogo administrado. Las reglas
+    # retiradas conservan su bloqueo operativo aunque sigan en el histórico.
     reglas = [replace(regla, esta_activa=False) if regla.codigo in RETIRED_RISK_RULES
-              else replace(regla, esta_activa=True) if active_web_evidence and regla.codigo in {"CONF-006", "CONF-007", "CONF-008"} and regla.peso > 0
               else regla for regla in cargar_reglas(client)]
     resultado = evaluar_riesgo(
         observaciones, reglas, source_states, ahora

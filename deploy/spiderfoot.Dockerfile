@@ -15,7 +15,8 @@ RUN apt-get update \
 # El commit se fija para que todo el equipo construya la misma versión.
 ARG SPIDERFOOT_REF=0f815a203afebf05c98b605dba5cf0475a0ee5fd
 RUN git clone https://github.com/smicallef/spiderfoot.git /opt/spiderfoot \
-    && git -C /opt/spiderfoot checkout --detach "$SPIDERFOOT_REF"
+    && git -C /opt/spiderfoot checkout --detach "$SPIDERFOOT_REF" \
+    && rm -f /opt/spiderfoot/modules/sfp_shodan.py
 
 WORKDIR /opt/spiderfoot
 RUN pip install --no-cache-dir -r requirements.txt \

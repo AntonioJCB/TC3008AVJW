@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import type { ClientData, Source, SourceResult } from '../../services/clientData'
 import { isActiveSource, isDisabledSourceResult, sourceIssueSummary } from '../../services/sourcePolicy'
+import InfoTip from '../../components/InfoTip'
 import LiveSourceLogDialog from './components/LiveSourceLogDialog'
 import './sources.css'
 
@@ -10,7 +11,7 @@ type SourceItem = { source: Source; result: SourceResult | null; status: 'health
 const modules: Record<string, string> = {
   'crt.sh': 'Certificate Transparency',
   theHarvester: 'CertSpotter · HackerTarget · RapidDNS · urlscan',
-  SpiderFoot: 'DNS DoH · urlscan · RDAP · Common Crawl · InternetDB',
+  SpiderFoot: 'DNS DoH · urlscan · RDAP · Common Crawl',
   Web: 'HTTPS/TLS · certificado · redirección HTTP',
 }
 
@@ -73,7 +74,7 @@ export default function LiveSourcesScreen({ data }: { data: ClientData }) {
     </div>
     <div className="sources-workspace">
       <section className="content-card source-inventory" aria-labelledby="live-source-inventory-heading">
-        <div className="source-inventory-header"><div><h2 id="live-source-inventory-heading">Herramientas integradas</h2><p>Los proveedores y módulos internos se muestran dentro de cada herramienta.</p></div><label className="source-search"><Search size={18} aria-hidden="true" /><span className="sr-only">Buscar fuente o módulo</span><input type="search" placeholder="Buscar fuente o módulo" value={query} onChange={(event) => setQuery(event.target.value)} />{query && <button type="button" aria-label="Limpiar búsqueda" onClick={() => setQuery('')}><X size={16} /></button>}</label></div>
+        <div className="source-inventory-header"><div className="portal-info-heading"><h2 id="live-source-inventory-heading">Herramientas integradas</h2><InfoTip label="herramientas integradas" text="Los proveedores y módulos internos se muestran dentro de cada herramienta." /></div><label className="source-search"><Search size={18} aria-hidden="true" /><span className="sr-only">Buscar fuente o módulo</span><input type="search" placeholder="Buscar fuente o módulo" value={query} onChange={(event) => setQuery(event.target.value)} />{query && <button type="button" aria-label="Limpiar búsqueda" onClick={() => setQuery('')}><X size={16} /></button>}</label></div>
         <div className="source-filters" role="group" aria-label="Filtrar fuentes">{[
           { id: 'all' as Filter, label: 'Todas', count: items.length },
           { id: 'healthy' as Filter, label: 'Saludables', count: healthy },

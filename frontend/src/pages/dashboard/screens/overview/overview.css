@@ -106,11 +106,8 @@
 .overview-screen .trend-ranges button.selected { background: var(--theme-surface-alt); color: var(--ink); font-weight: 700; }
 .overview-screen .trend-card .card-heading { align-items: start; flex-wrap: wrap; }
 .overview-screen .trend-date-filter { display: flex; align-items: end; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-left: auto; }
-.overview-screen .trend-date-filter label { display: grid; gap: 5px; color: var(--muted); font-size: 13px; font-weight: 700; }
-.overview-screen .trend-date-filter input { min-height: 38px; padding: 7px 10px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--theme-field); color: var(--ink); font: inherit; font-weight: 500; }
-.overview-screen .trend-date-filter input:focus-visible,
-.overview-screen .trend-date-filter button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
-.overview-screen .trend-date-filter button { min-height: 38px; padding: 7px 11px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--theme-surface-alt); color: var(--ink); font-size: 13px; font-weight: 700; cursor: pointer; }
+.overview-screen .trend-date-filter > button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.overview-screen .trend-date-filter > button { min-height: 38px; padding: 7px 11px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--theme-surface-alt); color: var(--ink); font-size: 13px; font-weight: 700; cursor: pointer; }
 .overview-screen .trend-chart { height: 245px; margin-top: 18px; }
 .overview-screen .trend-chart svg { width: 100%; height: 100%; overflow: visible; }
 .overview-screen .chart-gridline { stroke: var(--line-soft); stroke-width: 1; }

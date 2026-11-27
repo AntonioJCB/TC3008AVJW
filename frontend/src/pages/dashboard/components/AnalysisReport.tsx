@@ -46,7 +46,7 @@ export default function AnalysisReport({ data }: { data: ClientData }) {
     finally { setExporting(false) }
   }
   return <div className="analysis-page">
-    <header className="analysis-page-heading"><div><span className="eyebrow">OPERACIÓN Y EVIDENCIA</span><h2>Análisis</h2><p>Consulta cada ejecución, su cobertura y la evidencia que sustenta el reporte.</p></div></header>
+    <header className="analysis-page-heading"><div><h2>Análisis</h2><p>Consulta cada ejecución, su cobertura y la evidencia que sustenta el reporte.</p></div></header>
     <div className="analysis-report-toolbar"><label htmlFor="analysis-report-select"><span>Análisis del reporte</span><select id="analysis-report-select" value={selected} onChange={event => { setSelected(event.target.value); setSnapshot(null); setError(''); setExportError('') }}><option value="">Último análisis terminado</option>{data.scans.filter(scan => scan.finalizado_en && scan.estado !== 'cancelado').map(scan => <option key={scan.id} value={scan.id}>{new Date(scan.finalizado_en!).toLocaleString('es-MX')} · {scan.estado}</option>)}</select></label><span className="analysis-current-state" role="status">{selected && !snapshot ? 'Cargando…' : reportData?.latestFinishedScan?.estado ?? 'Sin análisis'}</span><button type="button" className="overview-export-button" onClick={() => void exportExcel()} disabled={exporting || !reportData?.latestFinishedScan}>{exporting ? 'Generando Excel…' : 'Exportar a Excel'}</button></div>
     {exportError && <p className="client-error" role="alert">{exportError}</p>}
     {error ? <p className="client-error" role="alert">{error}</p> : selected && !snapshot ? <p role="status">Cargando reporte…</p> : reportData?.latestFinishedScan ? <ReportContent key={selected || data.latestFinishedScan?.id} data={reportData} /> : <p className="client-empty" role="status">Todavía no hay análisis terminados. El reporte aparecerá al finalizar una ejecución.</p>}
@@ -114,7 +114,8 @@ function ReportContent({ data }: { data: ClientData }) {
       const raw = raws[item.id]
       const crt = isCrtshReport(raw) ? raw : null
       const harvester = isHarvesterReport(raw) ? raw : null
-      return <article className="report-source" key={item.id}><h3>{item.nombre}</h3><p className="report-source-lead">{result?.estado ?? 'Sin ejecutar'} · {result?.observaciones_generadas ?? 0} observaciones · {result?.activos_nuevos ?? 0} activos nuevos{result?.error ? ` · ${sourceIssueSummary(result.error)}` : ''}</p>
+      const status = result?.estado === 'completado' && result.error ? 'parcial' : result?.estado ?? 'Sin ejecutar'
+      return <article className="report-source" key={item.id}><h3>{item.nombre}</h3><p className="report-source-lead">{status} · {result?.observaciones_generadas ?? 0} observaciones · {result?.activos_nuevos ?? 0} activos nuevos{result?.error ? ` · ${sourceIssueSummary(result.error)}` : ''}</p>
         <details className="report-source-disclosure"><summary>Contexto, consultas y evidencia</summary><p>{purposes[item.nombre]}</p>{(result?.error || report?.error) && <p role="status">{result?.error || report?.error}</p>}
         {rawErrors.includes(item.id) && <p role="alert">No se pudo cargar la respuesta original. Los contadores y las consultas guardadas siguen disponibles.</p>}
         {crt && <><p>{crt.entries.length} registros de certificados recibidos.</p><details><summary>Consultas de Certificate Transparency</summary><ul>{crt.queries.map((query, index) => <li key={index}>{query.query}: {query.status === 'ok' ? `${query.entries} registros recibidos` : `Consulta fallida: ${query.error || query.status}`}</li>)}</ul></details></>}

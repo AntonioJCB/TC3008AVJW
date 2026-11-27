@@ -25,6 +25,7 @@ from app.spiderfoot_passive import (
     unavailable_report_event,
 )
 from app.settings import DEFAULT_SPIDERFOOT_MODULES
+from app.source_policy import enabled_runner_sources
 from app.web_posture import inspect_host
 
 logger = logging.getLogger(__name__)
@@ -118,14 +119,17 @@ def _unique_harvester_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]
 
 
 def _merge_outcomes(name: str, previous: dict[str, Any], current: dict[str, Any]) -> dict[str, Any]:
+    evaluated = [item for item in (previous, current) if item["estado"] != "deshabilitado"]
     contents = [item["contenido"] for item in (previous, current)
-                if item.get("contenido") is not None and (name in {"crt.sh", "theHarvester", "SpiderFoot"} or item["estado"] == "completado")]
-    errors = [item["error"] for item in (previous, current) if item.get("error")]
+                if item.get("contenido") is not None and (name in {"crt.sh", "theHarvester", "SpiderFoot"}
+                or item["estado"] == "completado" or (name == "Web" and bool(item["contenido"])))]
+    errors = [item["error"] for item in evaluated if item.get("error")]
     return {
         "consultas": [q for item in (previous, current) for q in item.get("consultas", [])],
-        "estado": "completado" if any(item["estado"] == "completado" for item in (previous, current)) else "fallido",
+        "estado": "completado" if any(item["estado"] == "completado" for item in evaluated)
+                  else "fallido" if evaluated else "deshabilitado",
         "contenido": _merge_source_data(name, contents) if contents else None,
-        "error": ("; ".join(errors))[:1000] if errors else None,
+        "error": ("; ".join(errors))[:1000] if errors else previous.get("error") if not evaluated else None,
         "ips_en_alcance": list(dict.fromkeys([
             *(previous.get("ips_en_alcance") or []), *(current.get("ips_en_alcance") or []),
         ])),
@@ -135,7 +139,7 @@ def _merge_outcomes(name: str, previous: dict[str, Any], current: dict[str, Any]
 def _new_targets(outcomes: dict[str, dict[str, Any]], domain: str, known: set[str], ip_scope: str | None) -> list[str]:
     discovered: set[str] = set()
     for name, outcome in outcomes.items():
-        if outcome["estado"] != "completado" or outcome["contenido"] is None:
+        if outcome["contenido"] is None:
             continue
         try:
             normalized = adaptar(name, outcome["contenido"], domain, outcome.get("ips_en_alcance"))
@@ -160,6 +164,52 @@ def _crtsh_covers_subdomains(outcome: dict[str, Any] | None, domain: str) -> boo
         and any(query.get("query") == f"%.{domain}" and query.get("status") == "ok"
                 for query in content.get("queries", []))
     )
+
+
+async def _run_web_targets(targets: list[str], runner: Runner, timeout_seconds: float | None) -> dict[str, Any]:
+    """Evalúa cada FQDN autorizado por separado, con concurrencia acotada."""
+    deadline = asyncio.get_running_loop().time() + timeout_seconds if timeout_seconds else None
+    slots = asyncio.Semaphore(4)
+
+    async def check(target: str) -> tuple[RunnerOutput | None, str | None]:
+        async with slots:
+            try:
+                remaining = deadline - asyncio.get_running_loop().time() if deadline else None
+                if remaining is not None and remaining <= 0:
+                    raise TimeoutError("Se agotó el tiempo de Web antes de evaluar este objetivo")
+                result = await asyncio.wait_for(runner(target), timeout=remaining) if remaining else await runner(target)
+                output = result if isinstance(result, RunnerOutput) else RunnerOutput(result)
+                if not isinstance(output.data, list):
+                    raise ValueError("Web devolvió un formato de resultado inesperado")
+                return output, None
+            except Exception as error:
+                return None, _error_message(error)
+
+    checked = await asyncio.gather(*(check(target) for target in targets))
+    outputs: list[Any] = []
+    queries: list[dict[str, Any]] = []
+    errors: list[str] = []
+    successes: list[bool] = []
+    for target, (result, failure) in zip(targets, checked):
+        error = failure or (result.error if result else None)
+        if result is not None:
+            outputs.append(result.data)
+            successes.append(not result.failed)
+        if error:
+            errors.append(f"{target}: {error}")
+        queries.append({
+            "objetivo": target,
+            "estado": "fallido" if failure or (result and result.failed) else "parcial" if error else "completado",
+            "metodo": "validación técnica 80/443",
+            "error": error,
+        })
+    return {
+        "estado": "completado" if any(successes) else "fallido",
+        "contenido": _merge_source_data("Web", outputs) if outputs else None,
+        "error": ("; ".join(errors))[:1000] if errors else None,
+        "ips_en_alcance": [],
+        "consultas": queries,
+    }
 
 
 async def run_all(
@@ -224,9 +274,10 @@ async def run_all(
         "theHarvester": harvester_runner,
         "SpiderFoot": lambda target: run_spiderfoot(target, settings),
     }
-    if settings.web_enabled:
+    enabled_sources = enabled_runner_sources(crtsh_enabled=settings.crtsh_enabled, web_enabled=settings.web_enabled)
+    if "Web" in enabled_sources:
         default_runners["Web"] = lambda target: run_web(target, settings)
-    if settings.crtsh_enabled:
+    if "crt.sh" in enabled_sources:
         default_runners = {
             "crt.sh": lambda target: run_crtsh(target, settings, include_subdomains=target == domain),
             **default_runners,
@@ -273,7 +324,7 @@ async def run_all(
             additional = await run_all(
                 domain, settings,
                 additional_runners,
-                timeout_seconds=remaining, targets=new_targets, target_only=True,
+                timeout_seconds=remaining, targets=new_targets, target_only=True, ip_scope=ip_scope,
             )
             if covered:
                 content = outcomes["crt.sh"]["contenido"]
@@ -311,6 +362,24 @@ async def run_all(
             source_targets = domain_targets
         else:
             source_targets = selected_targets
+        if name == "Web" and not source_targets:
+            outcome = {"estado": "deshabilitado", "contenido": None,
+                       "error": "Fuente deshabilitada temporalmente: no hay FQDN dentro del alcance autorizado elegible para Web.",
+                       "ips_en_alcance": [], "consultas": []}
+            if on_result is not None:
+                try:
+                    await on_result(name, outcome)
+                except Exception:
+                    logger.exception("No se pudo procesar el resultado de %s", name)
+            return name, outcome
+        if name == "Web":
+            outcome = await _run_web_targets(source_targets, runner, timeout_seconds)
+            if on_result is not None:
+                try:
+                    await on_result(name, outcome)
+                except Exception:
+                    logger.exception("No se pudo procesar el resultado de %s", name)
+            return name, outcome
         queries: list[dict[str, Any]] = []
         outputs: list[Any] = []
         successes: list[bool] = []
@@ -360,7 +429,7 @@ async def run_all(
                         } for value in source_targets if value != target)
                         break
                 except Exception as error:
-                    queries.append({"objetivo": target, "estado": "fallido", "metodo": "consulta de fuente", "error": _error_message(error)})
+                    queries.append({"objetivo": target, "estado": "fallido", "metodo": "validación técnica 80/443" if name == "Web" else "consulta de fuente", "error": _error_message(error)})
                     errors.append(f"{target}: {_error_message(error)}")
             data = _merge_source_data(name, outputs) if outputs else None
             outcome = {
@@ -465,7 +534,7 @@ async def run_crtsh(
 
 
 async def run_web(domain: str, settings: OrchestratorSettings) -> RunnerOutput:
-    events, errors = await inspect_host(domain, timeout=min(settings.request_timeout_seconds, 10))
+    events, errors = await inspect_host(domain, timeout=max(1, min(settings.request_timeout_seconds, 20)))
     return RunnerOutput(events, error="; ".join(errors) if errors else None, failed=bool(errors and not events))
 
 

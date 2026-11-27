@@ -23,6 +23,7 @@ export interface RelationEdge {
   from: string
   to: string
   critical?: boolean
+  historical?: boolean
 }
 
 export interface PriorityRoute {

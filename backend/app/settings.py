@@ -68,7 +68,7 @@ class Settings:
         return cls(
             supabase_url=supabase_url,
             supabase_service_role_key=service_key,
-            web_enabled=True,
+            web_enabled=_enabled("WEB_ENABLED", True),
             nvd_api_key=nvd_api_key or None,
             theharvester_bin=os.getenv("THEHARVESTER_BIN", "theHarvester").strip(),
             theharvester_sources=os.getenv(

@@ -187,7 +187,7 @@ def scan_message(scan_state: str, results: Mapping[str, Mapping[str, Any]]) -> s
 
 def orchestrator_settings(settings: Settings) -> OrchestratorSettings:
     return OrchestratorSettings(
-        web_enabled=True,
+        web_enabled=settings.web_enabled,
         theharvester_bin=settings.theharvester_bin,
         theharvester_sources=settings.theharvester_sources,
         spiderfoot_url=settings.spiderfoot_url,
@@ -304,7 +304,7 @@ def _persist_source(
     }
     source_state = outcome["estado"]
     error = outcome.get("error")
-    if source_state == "completado" or (source_name in {"crt.sh", "theHarvester", "SpiderFoot"} and outcome.get("contenido") is not None):
+    if source_state == "completado" or (source_name in {"crt.sh", "theHarvester", "SpiderFoot", "Web"} and bool(outcome.get("contenido"))):
         try:
             summary = ingestar_resultado(
                 client,
@@ -413,6 +413,8 @@ async def run_scan_job(
     disabled_sources = {}
     if runners is None and not getattr(settings, "crtsh_enabled", True):
         disabled_sources["crt.sh"] = CRTSH_DISABLED_REASON
+    if runners is None and not settings.web_enabled:
+        disabled_sources["Web"] = "Fuente deshabilitada temporalmente: WEB_ENABLED=false en la configuración efectiva."
     if runners is not None and "Web" not in runners:
         disabled_sources["Web"] = "Fuente deshabilitada temporalmente: no se proporcionó un ejecutor Web."
 

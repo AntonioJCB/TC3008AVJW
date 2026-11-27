@@ -1,0 +1,19 @@
+.date-filter-picker { position: relative; display: grid; gap: 5px; min-width: 126px; }
+.date-filter-label { color: var(--muted); font-size: 12px; font-weight: 700; }
+.date-filter-trigger { display: inline-flex; align-items: center; justify-content: flex-start; gap: 8px; min-height: 38px; padding: 7px 10px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--theme-field); color: var(--ink); font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.date-filter-trigger svg { color: var(--muted); }
+.date-filter-trigger:hover, .date-filter-trigger[aria-expanded="true"] { border-color: var(--teal); }
+.date-filter-picker button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.date-filter-popover { position: absolute; z-index: 30; top: calc(100% + 7px); right: 0; width: 252px; padding: 10px; border: 1px solid var(--line); border-radius: 11px; background: var(--theme-surface); color: var(--ink); box-shadow: 0 14px 34px #0003; }
+.date-filter-month { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
+.date-filter-month strong { font-size: 13px; font-weight: 700; text-transform: capitalize; }
+.date-filter-month button, .date-filter-actions button { display: inline-grid; place-items: center; min-width: 28px; min-height: 28px; padding: 3px 7px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font: inherit; font-size: 12px; cursor: pointer; }
+.date-filter-month button:hover, .date-filter-actions button:hover:not(:disabled) { background: var(--theme-surface-alt); }
+.date-filter-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.date-filter-weekday { padding: 5px 0; color: var(--muted); font-size: 10px; font-weight: 700; text-align: center; }
+.date-filter-grid button { width: 31px; height: 31px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--ink); font: inherit; font-size: 12px; cursor: pointer; }
+.date-filter-grid button:hover:not(:disabled) { background: var(--theme-surface-alt); }
+.date-filter-grid button.today { border-color: var(--line); }
+.date-filter-grid button.selected { border-color: var(--teal); background: color-mix(in srgb, var(--teal) 16%, var(--theme-field)); font-weight: 750; }
+.date-filter-grid button:disabled, .date-filter-actions button:disabled { opacity: .32; cursor: default; }
+.date-filter-actions { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--line-soft); }

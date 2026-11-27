@@ -12,6 +12,7 @@ export default function AssetRow({ asset, selected, onSelect }: { asset: AssetRe
   const exposureDetail = asset.findings ? `${asset.findings} ${asset.findings === 1 ? 'hallazgo de riesgo' : 'hallazgos de riesgo'}`
     : asset.informationalFindings ? `${asset.informationalFindings} ${asset.informationalFindings === 1 ? 'señal informativa' : 'señales informativas'}`
       : asset.exposure === 'Evaluado sin hallazgos' ? 'Sin hallazgos'
+        : asset.exposure === 'Evaluación parcial' ? 'Consulta realizada con cobertura incompleta'
         : asset.exposure === 'Fuera de alcance' ? 'No autorizado para evaluación'
           : asset.exposure === 'Sin evaluación compatible' ? 'Sin herramienta compatible'
             : asset.exposure === 'Histórico/sintético' ? 'Evidencia no confirmada'

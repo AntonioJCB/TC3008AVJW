@@ -25,6 +25,53 @@
   box-shadow: 0 12px 28px #0001;
 }
 .proposal-dashboard .eyebrow { color: var(--bronze); }
+/* Shared visual primitives for Administration, the live portal and its demo. */
+.proposal-dashboard {
+  --portal-card-radius: 12px;
+  --portal-control-radius: 9px;
+}
+.proposal-dashboard :is(.client-card, .content-card, .asset-kpi, .source-kpi, .finding-kpi, .history-kpi) {
+  border-radius: var(--portal-card-radius);
+  border-color: var(--line-soft);
+  background: var(--theme-surface);
+}
+.proposal-dashboard :is(.client-card, .content-card, .asset-kpi, .source-kpi, .finding-kpi, .history-kpi) > :is(h2, h3) {
+  color: var(--ink);
+  letter-spacing: -.025em;
+}
+.proposal-dashboard :is(.client-card, .content-card) :is(input:not([type='checkbox']):not([type='radio']), select, textarea) {
+  border-radius: var(--portal-control-radius);
+  font-family: inherit;
+}
+.proposal-dashboard :is(.client-topbar, .client-card, .content-card) button {
+  font-family: inherit;
+}
+.proposal-dashboard :is(.client-topbar, .client-card, .content-card) button {
+  border-radius: var(--portal-control-radius);
+}
+.proposal-dashboard :is(input[type='search'], input[type='text'], input[type='date'], select, textarea) {
+  border-radius: var(--portal-control-radius);
+  color: var(--ink);
+  font-family: inherit;
+}
+.proposal-dashboard :is(.asset-filter-tabs, .source-filters, .finding-filters, .history-filters) button {
+  border-radius: var(--portal-control-radius);
+  font-family: inherit;
+}
+.proposal-dashboard :is(button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+.proposal-dashboard :is(.client-status, .settings-status, .admin-state-badge) {
+  border-radius: 999px;
+  font-weight: 750;
+}
+.proposal-dashboard .portal-info-heading { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.proposal-dashboard .portal-info { display: inline-flex; flex: none; }
+.proposal-dashboard .portal-info > button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--line-soft); border-radius: 50%; background: var(--theme-surface); color: var(--teal); cursor: help; }
+.proposal-dashboard .portal-info > button:hover, .proposal-dashboard .portal-info > button:focus-visible { border-color: var(--teal); color: var(--ink); }
+.proposal-dashboard .portal-info-tooltip { position: absolute; z-index: 10; top: calc(100% + 9px); left: 0; width: min(360px, calc(100vw - 48px)); padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--theme-surface-alt); color: var(--ink); font-size: 13px; font-weight: 500; letter-spacing: normal; line-height: 1.45; white-space: normal; box-shadow: 0 12px 30px #0006; opacity: 0; pointer-events: none; transform: translateY(-4px); transition: opacity .15s, transform .15s; }
+.proposal-dashboard .portal-info:hover .portal-info-tooltip, .proposal-dashboard .portal-info:focus-within .portal-info-tooltip { opacity: 1; pointer-events: auto; transform: translateY(0); }
 .demo-dialog-backdrop {
   position: fixed;
   z-index: 30;
@@ -74,4 +121,5 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .proposal-dashboard .dashboard-view { animation: none; }
+  .proposal-dashboard .portal-info-tooltip { transition: none; }
 }

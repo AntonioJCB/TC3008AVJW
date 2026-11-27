@@ -19,11 +19,8 @@
 .history-chart-heading { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
 .proposal-dashboard .history-chart-heading h2 { margin: 0; color: var(--ink); font-size: 14px; font-weight: 800; letter-spacing: .05em; }
 .history-date-filter { display: flex; align-items: end; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-left: auto; }
-.history-date-filter label { display: grid; gap: 5px; color: var(--muted); font-size: 13px; font-weight: 700; }
-.history-date-filter input { min-height: 38px; padding: 7px 10px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--theme-field); color: var(--ink); font: inherit; font-weight: 500; }
-.history-date-filter button { min-height: 38px; padding: 7px 11px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--theme-surface-alt); color: var(--ink); font-size: 13px; font-weight: 700; cursor: pointer; }
-.history-date-filter input:focus-visible,
-.history-date-filter button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.history-date-filter > button { min-height: 38px; padding: 7px 11px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--theme-surface-alt); color: var(--ink); font-size: 13px; font-weight: 700; cursor: pointer; }
+.history-date-filter > button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
 .history-chart-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 9px 17px; margin-top: 10px; color: var(--muted); font-size: 12px; }
 .history-chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .history-chart-legend i { width: 9px; height: 9px; border: 2px solid var(--teal); border-radius: 50%; }

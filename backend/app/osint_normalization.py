@@ -484,6 +484,24 @@ def _adapt_spiderfoot(raw: Any, domain: str) -> dict[str, Any]:
     for summary in summaries:
         if summary["status"] not in {"ok", "partial"}:
             continue
+        if summary.get("provider") == "google_dns_doh":
+            target = summary.get("target")
+            for check in summary.get("checks") or []:
+                if not isinstance(check, dict) or check.get("check") not in {"a", "aaaa"} or check.get("state") != "present":
+                    continue
+                for record in check.get("records") or []:
+                    if not isinstance(record, dict) or not isinstance(target, str):
+                        continue
+                    if str(record.get("name", "")).rstrip(".").lower() != target.rstrip(".").lower():
+                        continue
+                    address = normalizar_ip(record.get("data")) if isinstance(record.get("data"), str) else None
+                    if not address or not ipaddress.ip_address(address).is_global:
+                        continue
+                    fact = {"atributo": "resuelve_a", "datos": {"ip": address, "modulo": summary["module"],
+                            "tipo_registro": check["check"].upper()}, "observado_en": check.get("checked_at")}
+                    if _add_name(result, target, domain, [fact]):
+                        _add_ip(result, address, [{"atributo": "descubierto", "datos": {"modulo": summary["module"]},
+                                                  "observado_en": check.get("checked_at")}])
         for fact in summary["events"]:
             if not isinstance(fact, dict):
                 continue

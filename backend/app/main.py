@@ -23,6 +23,7 @@ from app.api.router import api_router
 from app.orchestrators import Runner, run_all  # noqa: F401  (run_all se re-exporta para las pruebas)
 from app.osint_normalization import normalizar_ip, parsear_servicio
 from app.risk.persistencia import calcular_y_guardar, leer_hallazgos, leer_riesgo
+from app.risk.reglas import DEFINICIONES
 from app.scan_scope import scope_allows_ip as _scope_allows_ip
 from app.spiderfoot_passive import selected_modules
 from app.scan_service import (  # noqa: F401  (se re-exportan los helpers con su nombre histórico)
@@ -47,6 +48,9 @@ from app.settings import Settings, get_settings  # noqa: F401
 from app.source_policy import (
     CRTSH_DISABLED_REASON,
     DISABLED_SOURCE_STATE,
+    POTENTIAL_ONLY_RISK_RULES,
+    RETIRED_RISK_RULES,
+    enabled_runner_sources,
     is_disabled_source_result,
 )
 
@@ -609,6 +613,29 @@ async def health() -> dict[str, str]:
     return {"estado": "disponible"}
 
 
+@app.get("/api/admin/configuracion-operativa")
+async def operational_configuration(user: Any = Depends(_current_user)) -> dict[str, Any]:
+    client = _supabase_client()
+    profile = _execute(client.table("usuarios").select("esta_activo").eq("id", str(user.id)).maybe_single())
+    admin = _execute(client.table("administradores_plataforma").select("usuario_id").eq("usuario_id", str(user.id)).maybe_single())
+    if not profile or not profile.get("esta_activo") or not admin:
+        raise HTTPException(status_code=403, detail="Solo un administrador de plataforma puede consultar la configuración operativa")
+    settings = get_settings()
+    sources = enabled_runner_sources(crtsh_enabled=settings.crtsh_enabled, web_enabled=settings.web_enabled)
+    rules = {
+        code: {
+            "estado": "retirada" if code in RETIRED_RISK_RULES
+            else "sin_evaluador" if code not in DEFINICIONES
+            else "solo_potencial" if code in POTENTIAL_ONLY_RISK_RULES
+            else "evaluable",
+            "fuentes": list(definition.requiere_fuentes) if definition else [],
+        }
+        for code in set(DEFINICIONES) | RETIRED_RISK_RULES
+        for definition in [DEFINICIONES.get(code)]
+    }
+    return {"fuentes": sources, "reglas": rules}
+
+
 @app.post("/api/admin/clientes/{organization_id}/usuarios/invitar", status_code=201)
 async def invite_client_user(
     organization_id: UUID,
@@ -760,6 +787,8 @@ async def execute_scan(
     running = {name: {"estado": "ejecutando"} for name in SOURCE_NAMES}
     if not getattr(settings, "crtsh_enabled", True):
         running["crt.sh"] = {"estado": DISABLED_SOURCE_STATE, "error": CRTSH_DISABLED_REASON}
+    if not settings.web_enabled:
+        running["Web"] = {"estado": DISABLED_SOURCE_STATE, "error": "Fuente deshabilitada temporalmente: WEB_ENABLED=false en la configuración efectiva."}
     return _status_response(
         scan_id_text, "ejecutando", running, dominio=domain,
         iniciado_en=datetime.now(timezone.utc).isoformat(),

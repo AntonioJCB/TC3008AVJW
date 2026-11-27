@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import DateFilterPicker from '../../../components/DateFilterPicker'
 import type { HistoryScan } from '../../history/services/historyMock'
 import { riskTrends, type TrendRange } from '../services/overviewMock'
 
@@ -116,8 +117,8 @@ export default function RiskTrendChart({ actualScans }: { actualScans?: HistoryS
         <div className="card-heading">
           <h3 id="trend-title">EVOLUCIÓN DEL RIESGO</h3>
           <div className="trend-date-filter" role="group" aria-label="Filtrar análisis por fechas">
-            <label>Desde<input type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => setDateFrom(event.target.value)} /></label>
-            <label>Hasta<input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} /></label>
+            <DateFilterPicker label="Desde" value={dateFrom} max={dateTo || undefined} onChange={setDateFrom} />
+            <DateFilterPicker label="Hasta" value={dateTo} min={dateFrom || undefined} onChange={setDateTo} />
             {hasDateFilter && <button type="button" onClick={() => { setDateFrom(''); setDateTo('') }}>Ver todo</button>}
           </div>
         </div>

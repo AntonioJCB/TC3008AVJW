@@ -70,6 +70,7 @@
 @media (max-width: 700px) { .live-dashboard .content-intro { align-items: flex-start; flex-direction: column; } }
 
 .live-sources-screen .source-status.error { color: var(--risk-critical); }
+.live-sources-screen .source-inventory { overflow: visible; }
 .live-sources-screen .source-status.pending { color: var(--muted); }
 .live-sources-screen .source-status.running { color: var(--bronze); }
 .live-sources-screen .source-monogram.error { color: var(--risk-critical); }
@@ -112,7 +113,8 @@
 .settings-page-heading p { margin: 0; color: var(--muted); font-size: 14px; }
 .settings-primary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
 .client-settings-layout .settings-card { min-width: 0; padding: clamp(20px, 2vw, 28px); border-radius: 12px; }
-.client-settings-layout .settings-card > h2 { margin: 7px 0 6px; color: var(--ink); font-size: 20px; }
+.client-settings-layout .settings-card > h2,
+.client-settings-layout .settings-card > .portal-info-heading h2 { margin: 7px 0 6px; color: var(--ink); font-size: 20px; }
 .client-settings-layout .settings-card > p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .client-settings-layout .theme-choice { max-width: none; margin-top: 20px; }
 .client-settings-layout .theme-choice button { min-height: 128px; border-radius: 9px; }

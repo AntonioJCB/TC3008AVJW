@@ -8,10 +8,11 @@ import { useRelationExplorer } from './controller/useRelationExplorer'
 import { priorityRoutes, relationEdges, relationNodes } from './services/relationsMock'
 import type { ClientData } from '../../services/clientData'
 import { liveRelations } from '../../services/liveAdapters'
+import InfoTip from '../../components/InfoTip'
 import './relations.css'
 
 export default function RelationsScreen({ data }: { data?: ClientData }) {
-  const graph = useMemo(() => data ? liveRelations(data) : { nodes: relationNodes, edges: relationEdges, routes: priorityRoutes }, [data])
+  const graph = useMemo(() => data ? liveRelations(data) : { nodes: relationNodes, edges: relationEdges, routes: priorityRoutes, canvasSize: undefined }, [data])
   const explorer = useRelationExplorer(graph.nodes, graph.routes)
   const rootAsset = data?.assets.find(asset => asset.valor === data.organization.dominio_principal)
   const represented = new Set(graph.nodes.map(node => node.id))
@@ -28,9 +29,9 @@ export default function RelationsScreen({ data }: { data?: ClientData }) {
   return <div className="relations-screen">
     <h2 className="sr-only">Relaciones</h2>
     <RelationMetrics values={metrics} />
-    {data && <div className="relation-browser"><p>Todos los {data.assets.length} activos cargados, incluidos históricos y aislados. Las líneas representan únicamente nombres observados o resoluciones DNS; no atribuyen propiedad de IPs compartidas.</p></div>}
+    {data && <div className="relation-browser"><div className="portal-info-heading"><span>{data.assets.length} activos cargados</span><InfoTip label="relaciones del grafo" text="Las líneas continuas muestran DNS, las discontinuas nombres observados y las tenues evidencia histórica." /></div><p>Una IP compartida no implica propiedad.</p></div>}
     <div className="relations-workspace">
-      <RelationGraph selectedNodeId={explorer.selectedNode.id} selectedRoute={explorer.selectedRoute} onSelectNode={explorer.selectNode} onReset={explorer.reset} nodes={graph.nodes} edges={graph.edges} omittedCount={omitted.length + unloaded} showAll={Boolean(data)} />
+      <RelationGraph selectedNodeId={explorer.selectedNode.id} selectedRoute={explorer.selectedRoute} onSelectNode={explorer.selectNode} onReset={explorer.reset} nodes={graph.nodes} edges={graph.edges} canvasSize={graph.canvasSize} omittedCount={omitted.length + unloaded} showAll={Boolean(data)} />
       <aside className="relations-side" aria-label="Detalle de relaciones">
         <RelationFocus node={explorer.selectedNode} />
         <PriorityRoutes selectedRoute={explorer.selectedRoute} onSelectRoute={explorer.selectRoute} routes={graph.routes} />

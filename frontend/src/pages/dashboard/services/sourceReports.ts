@@ -78,7 +78,7 @@ function isDnsPostureCheck(value: unknown): value is DnsPostureCheck {
 
 export function getSpiderFootReports(value: unknown): SpiderFootReport[] {
   if (!Array.isArray(value)) return []
-  const modules: Record<string, string> = { sfp_baxter_dns_doh: 'google_dns_doh', sfp_baxter_urlscan: 'urlscan', sfp_baxter_commoncrawl: 'common_crawl', sfp_baxter_rdap: 'rdap', sfp_baxter_internetdb: 'internetdb' }
+  const modules: Record<string, string> = { sfp_baxter_dns_doh: 'google_dns_doh', sfp_baxter_urlscan: 'urlscan', sfp_baxter_commoncrawl: 'common_crawl', sfp_baxter_rdap: 'rdap' }
   const result: SpiderFootReport[] = []
   type ChunkGroup = {
     summary?: SpiderFootReport & { check_count?: number; event_count?: number }

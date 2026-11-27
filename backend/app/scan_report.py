@@ -8,7 +8,6 @@ from app.spiderfoot_passive import reports as passive_reports
 
 _SECURITY_PROVIDERS = {
     "google_dns_doh": "Postura DNS mediante Google Public DNS DoH",
-    "internetdb": "Servicios y vulnerabilidades publicados por InternetDB",
 }
 
 _DOCUMENTATION_NETWORKS = tuple(ipaddress.ip_network(value) for value in (
@@ -26,15 +25,15 @@ def _is_documentation_address(value):
 
 def _security_checks(outcomes, target):
     checks = []
-    is_ip = normalizar_ip(target) is not None
     spiderfoot = outcomes.get("SpiderFoot") or {}
     for report in passive_reports(spiderfoot.get("contenido")):
         provider = report.get("provider")
-        if report.get("target") != target or report.get("status") not in {"ok", "empty"}:
+        if report.get("target") != target or report.get("status") not in {"ok", "empty", "partial"}:
             continue
-        if provider == "google_dns_doh" and (is_ip or not report.get("checks")):
-            continue
-        if provider == "internetdb" and not is_ip:
+        if provider == "google_dns_doh" and (normalizar_ip(target) or not any(
+            isinstance(check, dict) and check.get("state") in {"present", "absent"}
+            for check in report.get("checks") or []
+        )):
             continue
         if provider not in _SECURITY_PROVIDERS:
             continue
@@ -43,6 +42,15 @@ def _security_checks(outcomes, target):
             "descripcion": _SECURITY_PROVIDERS[provider], "estado": report["status"],
             "comprobaciones": len(report.get("checks") or []),
         })
+    web = outcomes.get("Web") or {}
+    web_query = next((query for query in web.get("consultas", []) if query.get("objetivo") == target), None)
+    evidence = [event for event in (web.get("contenido") or [])
+                if isinstance(event, dict) and event.get("host") == target
+                and event.get("validation_mode") == "active-authorized-v1"]
+    if web_query and web_query.get("estado") in {"completado", "parcial"} and evidence:
+        checks.append({"fuente": "Web", "proveedor": "validacion_web", "descripcion": "HTTPS/TLS y redirección HTTP en 80/443",
+                       "estado": "ok" if web_query["estado"] == "completado" else "partial",
+                       "comprobaciones": len(evidence)})
     return checks
 
 
@@ -92,13 +100,15 @@ def build_coverage(assets, outcomes, scope, initial_targets):
                   "Límite de objetivos o tiempo de ejecución" if pending else
                   "Consulta con errores o incidencias" if any(q["estado"] != "completado" for q in queries) else
                   "Sin registro de consulta para este activo" if not queries else None)
+        partial = any(query["estado"] in {"parcial", "fallido"} for query in queries)
         result.append({**asset, "objetivo": target, "incluido": bool(queries), "consultado": complete,
                        "motivo": reason, "consultas": queries, "previsto_al_inicio": target in initial_targets,
                        "clasificacion_exposicion": classification,
                        "evaluado_seguridad": bool(security_checks),
+                       "evaluacion_parcial": partial,
                        "comprobaciones_seguridad": security_checks,
                        "evaluacion_seguridad": (
-                           "Comprobaciones OSINT pasivas de seguridad aplicables completadas; no equivalen a una auditoría activa."
+                           "Comprobaciones de seguridad aplicables registradas; revisa los estados por fuente."
                            if security_checks else
                            "Registro histórico o sintético no confirmado; se excluye del inventario operativo."
                            if classification == "historico_sintetico" else

@@ -1,0 +1,20 @@
+.assistant-chat { margin-bottom: 18px; }
+.assistant-chat-context { margin: 20px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.assistant-chat-suggestions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.assistant-chat-suggestions button { display: inline-flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--theme-surface-alt); color: var(--ink); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.assistant-chat-suggestions button:hover { border-color: var(--teal); }
+.assistant-chat-suggestions button:disabled { opacity: .55; cursor: wait; }
+.assistant-chat-messages { display: grid; gap: 12px; margin-top: 22px; }
+.assistant-chat-messages:empty { display: none; }
+.assistant-chat-message { max-width: min(100%, 780px); padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--theme-surface-alt); overflow-wrap: anywhere; }
+.assistant-chat-message.user { justify-self: end; border-color: var(--teal); background: var(--theme-surface); }
+.assistant-chat-message span { color: var(--meta); font-size: 10px; font-weight: 800; letter-spacing: .08em; }
+.assistant-chat-message p { margin: 7px 0 0; color: var(--ink); font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+.assistant-chat-form { display: grid; gap: 10px; margin-top: 22px; }
+.assistant-chat-form label { color: var(--ink); font-size: 13px; font-weight: 700; }
+.assistant-chat-form textarea { width: 100%; min-height: 88px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--theme-field); color: var(--ink); font: inherit; font-size: 14px; line-height: 1.5; resize: vertical; }
+.assistant-chat-form textarea:focus { outline: 2px solid var(--teal); outline-offset: 2px; }
+.assistant-chat-form button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; justify-self: end; padding: 11px 18px; border: 0; border-radius: 8px; background: var(--coral); color: #07141a; font: inherit; font-size: 14px; font-weight: 800; cursor: pointer; }
+.assistant-chat-form button:disabled { opacity: .55; cursor: not-allowed; }
+.assistant-chat .client-error { margin-top: 16px; }
+@media (max-width: 700px) { .assistant-chat-suggestions { display: grid; } .assistant-chat-form button { width: 100%; } }

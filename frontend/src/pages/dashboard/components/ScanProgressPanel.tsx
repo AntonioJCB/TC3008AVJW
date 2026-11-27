@@ -16,9 +16,14 @@ function duration(seconds: number) {
   return whole < 60 ? `${whole} s` : `${Math.floor(whole / 60)} min ${String(whole % 60).padStart(2, '0')} s`
 }
 
+function durationAxis(seconds: number) {
+  const step = seconds <= 10 ? 2 : seconds <= 30 ? 5 : seconds <= 60 ? 10 : seconds <= 180 ? 30 : 60
+  return Math.max(step, Math.ceil(seconds / step) * step)
+}
+
 function sourceState(source: SourceProgress) {
   if (source.error === 'Detenido por el usuario') return { label: 'Detenida', tone: 'stopped' }
-  if (source.estado === 'completado') return { label: 'Completada', tone: 'done' }
+  if (source.estado === 'completado') return source.error ? { label: 'Parcial', tone: 'partial' } : { label: 'Completada', tone: 'done' }
   if (source.estado === 'fallido') return { label: 'Fallida', tone: 'failed' }
   return { label: 'En curso', tone: 'running' }
 }
@@ -37,14 +42,14 @@ export default function ScanProgressPanel({ progress, canStop, stopping, onStop 
 
   const sources = progress.fuentes ?? []
   const finished = sources.filter((source) => source.estado === 'completado' || source.estado === 'fallido').length
-  const successful = sources.filter((source) => source.estado === 'completado').length
+  const successful = sources.filter((source) => source.estado === 'completado' && !source.error).length
   const observations = sources.reduce((sum, source) => sum + (source.observaciones_generadas || 0), 0)
   const elapsed = secondsBetween(progress.iniciado_en, progress.finalizado_en, now)
   const timeline = sources.map((source) => ({
     ...source,
     seconds: secondsBetween(source.iniciado_en ?? progress.iniciado_en, source.finalizado_en, now),
   }))
-  const axis = Math.max(30, Math.ceil(Math.max(elapsed, ...timeline.map((source) => source.seconds)) / 30) * 30)
+  const axis = durationAxis(Math.max(elapsed, ...timeline.map((source) => source.seconds)))
   const percentage = sources.length ? Math.round(finished / sources.length * 100) : 0
 
   return <section className="scan-progress-panel" aria-labelledby="scan-progress-title">
@@ -61,7 +66,7 @@ export default function ScanProgressPanel({ progress, canStop, stopping, onStop 
         return <div className="scan-timeline-row" role="listitem" key={source.fuente}>
           <div className="scan-source-heading"><strong>{source.fuente}</strong><span className={`scan-source-state ${state.tone}`}>{state.label}</span></div>
           <div className="scan-source-bar"><span className={`scan-source-fill ${state.tone}`} style={{ width: `${Math.min(100, source.seconds / axis * 100)}%` }} /></div>
-          <div className="scan-source-facts"><span>{duration(source.seconds)}</span><span>{source.estado === 'completado' ? `${source.observaciones_generadas || 0} observaciones` : source.error || 'Consultando…'}</span></div>
+          <div className="scan-source-facts"><span>{duration(source.seconds)}</span><span>{source.estado === 'completado' ? `${source.observaciones_generadas || 0} observaciones${source.error ? ' · con incidencias' : ''}` : source.error || 'Consultando…'}</span></div>
         </div>
       })}
     </div>

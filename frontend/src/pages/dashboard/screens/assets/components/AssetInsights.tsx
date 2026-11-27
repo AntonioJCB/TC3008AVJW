@@ -14,8 +14,8 @@ export default function AssetInsights({ asset, onOpenDetail, quality }: { asset:
           <p>{asset.description}</p>
           <div className="asset-detail-metrics">
             <div><span>Exposición</span><strong className={`exposure-${asset.exposure.toLowerCase()}`}>{asset.exposure}</strong></div>
-            <div><span>Hallazgos</span><strong>{asset.findings}</strong></div>
-            <div><span>Fuentes</span><strong>{asset.sources.length}</strong></div>
+            <div><span>Hallazgos de riesgo</span><strong>{asset.findings}</strong></div>
+            <div><span>Fuentes actuales</span><strong>{asset.sources.length}</strong></div>
             <div><span>Confianza</span><strong>{asset.confidence === null ? '—' : `${asset.confidence}%`}</strong></div>
           </div>
           <button className="asset-open-detail" type="button" onClick={onOpenDetail}>Abrir ficha del activo</button>

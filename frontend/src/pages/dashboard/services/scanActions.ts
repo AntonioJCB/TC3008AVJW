@@ -19,6 +19,7 @@ export type ScanProgress = {
   fuentes_fallidas: string[]
   iniciado_en: string | null
   finalizado_en: string | null
+  riesgo: { puntaje_global: number } | null
   fuentes: {
     fuente: string
     estado: string
@@ -69,4 +70,8 @@ export function getScanProgress(scanId: string) {
 
 export function stopScan(scanId: string) {
   return scanRequest<ScanProgress>(`/api/escaneos/${scanId}/detener`, 'POST')
+}
+
+export function resolveFinding(scanId: string, findingId: string) {
+  return scanRequest<{ puntaje_global: number }>(`/api/escaneos/${scanId}/hallazgos/${findingId}/resolver`, 'POST')
 }

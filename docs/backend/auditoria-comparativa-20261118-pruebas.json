@@ -1,0 +1,32 @@
+{
+  "DNS": {
+    "actual_1_3_2": 0,
+    "git_1_0_0": 0,
+    "git_1_1_0": 0
+  },
+  "SSH": {
+    "actual_1_3_2": 13,
+    "git_1_0_0": 13,
+    "git_1_1_0": 13
+  },
+  "PostgreSQL": {
+    "actual_1_3_2": 26,
+    "git_1_0_0": 26,
+    "git_1_1_0": 26
+  },
+  "CVE_servicio": {
+    "actual_1_3_2": 6,
+    "git_1_0_0": 6,
+    "git_1_1_0": 6
+  },
+  "CVE_subdominio": {
+    "actual_1_3_2": 6,
+    "git_1_0_0": 6,
+    "git_1_1_0": 0
+  },
+  "Correo_publico": {
+    "actual_1_3_2": 0,
+    "git_1_0_0": 0,
+    "git_1_1_0": 0
+  }
+}

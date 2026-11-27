@@ -15,8 +15,7 @@ export type Client = {
 export type Member = { id: string; nombre: string; correo: string; rol: 'admin' | 'analista' | 'lector'; esta_activo: boolean }
 export type PendingUser = { id: string; nombre: string; correo: string }
 export type Rule = { id: string; codigo: string; nombre: string; categoria: string; severidad: string; peso: number; esta_activa: boolean }
-export type Source = { nombre: string; tipo_acceso: string }
-export type AdminData = { clients: Client[]; pendingUsers: PendingUser[]; rules: Rule[]; sources: Source[] }
+export type AdminData = { clients: Client[]; pendingUsers: PendingUser[]; rules: Rule[] }
 
 function client() {
   if (!supabase) throw new Error('Supabase no está configurado.')
@@ -29,21 +28,18 @@ function checked(error: { message: string } | null, message: string) {
 
 export async function loadAdminData(): Promise<AdminData> {
   const db = client()
-  const [clients, pending, rules, sources] = await Promise.all([
+  const [clients, pending, rules] = await Promise.all([
     db.rpc('listar_clientes_admin'),
     db.rpc('listar_usuarios_sin_cliente'),
     db.from('reglas_riesgo').select('id, codigo, nombre, categoria, severidad, peso, esta_activa').order('nombre'),
-    db.from('fuentes_osint').select('nombre, tipo_acceso').order('nombre'),
   ])
   checked(clients.error, 'No se pudo cargar la lista de clientes.')
   checked(pending.error, 'No se pudieron consultar las cuentas pendientes.')
   checked(rules.error, 'No se pudieron cargar las reglas de riesgo.')
-  checked(sources.error, 'No se pudieron cargar las fuentes OSINT.')
   return {
     clients: (clients.data ?? []) as Client[],
     pendingUsers: (pending.data ?? []) as PendingUser[],
     rules: (rules.data ?? []) as Rule[],
-    sources: (sources.data ?? []) as Source[],
   }
 }
 
@@ -115,10 +111,23 @@ export async function saveRule(rule: Rule) {
 }
 
 export async function saveRules(rules: Rule[]) {
-  const { error } = await client().rpc('configurar_reglas_riesgo_lote', {
+  if (!rules.length) return
+  if (rules.some((rule) => !Number.isInteger(rule.peso) || rule.peso < 0 || rule.peso > 100)) {
+    throw new Error('Cada peso debe ser un número entero entre 0 y 100.')
+  }
+  const db = client()
+  const { error } = await db.rpc('configurar_reglas_riesgo_lote', {
     p_cambios: rules.map((rule) => ({ id: rule.id, peso: rule.peso, esta_activa: rule.esta_activa })),
   })
-  checked(error, 'No se pudieron guardar las reglas. Ningún cambio fue aplicado; verifica los valores e intenta de nuevo.')
+  checked(error, 'No se confirmó el guardado de las reglas. Recarga los valores antes de reintentarlo.')
+  const { data, error: readError } = await db.from('reglas_riesgo')
+    .select('id, peso, esta_activa').in('id', rules.map((rule) => rule.id))
+  if (readError || !data) throw new Error('El guardado se envió, pero no se pudo verificar en Supabase. Recarga la página antes de repetirlo.')
+  const saved = new Map(data.map((rule) => [rule.id, rule]))
+  if (rules.some((rule) => {
+    const current = saved.get(rule.id)
+    return !current || current.peso !== rule.peso || current.esta_activa !== rule.esta_activa
+  })) throw new Error('Los valores leídos de Supabase no coinciden con los cambios solicitados. Recarga antes de repetir el guardado.')
 }
 
 export async function sendPasswordReset(email: string) {

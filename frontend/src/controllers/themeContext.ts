@@ -3,6 +3,8 @@ import type { Theme } from '../services/themePreference'
 
 export interface ThemeContextValue {
   theme: Theme
+  saving: boolean
+  error: string | null
   setTheme: (theme: Theme) => void
   toggleTheme: () => void
 }

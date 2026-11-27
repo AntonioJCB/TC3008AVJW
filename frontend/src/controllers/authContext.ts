@@ -1,5 +1,6 @@
 import { createContext } from 'react'
 import type { Session } from '@supabase/supabase-js'
+import type { Theme } from '../services/themePreference'
 
 export type UserRole = 'admin' | 'analista' | 'lector'
 
@@ -18,6 +19,10 @@ export type AuthContextValue = {
   isPlatformAdmin: boolean
   loading: boolean
   error: string | null
+  theme: Theme
+  themeSaving: boolean
+  themeError: string | null
+  setThemePreference: (theme: Theme) => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
 }

@@ -2,12 +2,13 @@ import { Moon, Sun } from 'lucide-react';
 import { useTheme } from '../controllers/useTheme';
 
 export default function ThemeToggle() {
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, saving } = useTheme();
   return (
     <button
       className="theme-toggle"
       type="button"
       onClick={toggleTheme}
+      disabled={saving}
       aria-label={
         theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'
       }

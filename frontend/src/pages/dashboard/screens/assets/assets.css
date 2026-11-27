@@ -65,6 +65,7 @@
 .assets-screen .exposure-alta { color: var(--risk-high); }
 .assets-screen .exposure-media { color: var(--risk-medium); }
 .assets-screen .exposure-baja { color: var(--risk-low); }
+.assets-screen .exposure-evaluación.parcial { color: var(--bronze); }
 .asset-empty { padding: 46px 20px !important; color: var(--muted); text-align: center; }
 .asset-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 20px; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: 13px; }
 .asset-pagination > div { display: flex; gap: 8px; }

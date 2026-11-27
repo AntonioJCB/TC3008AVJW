@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { X } from 'lucide-react'
+import { createPortal } from 'react-dom'
 import type { SourceRecord } from '../services/sourcesMock'
 
 export default function SourceDetailDialog({ source, onClose }: { source: SourceRecord; onClose: () => void }) {
@@ -9,12 +10,10 @@ export default function SourceDetailDialog({ source, onClose }: { source: Source
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [onClose])
 
-  return <div className="source-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+  return createPortal(<div className="source-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <section className="source-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="source-dialog-heading">
-      <button type="button" className="source-dialog-close" aria-label="Cerrar detalle" onClick={onClose}><X size={18} /></button>
-      <span className="source-panel-label">DETALLE TÉCNICO</span>
-      <h2 id="source-dialog-heading">{source.name}</h2>
-      <p>{source.description}</p>
+      <header className="source-dialog-header"><div><span className="source-panel-label">DETALLE TÉCNICO</span><h2 id="source-dialog-heading">{source.name}</h2><p>{source.description}</p></div><button type="button" className="source-dialog-close" aria-label="Cerrar detalle" onClick={onClose}><X size={18} /></button></header>
+      <div className="source-dialog-scroll">
       <dl>
         <div><dt>Tipo de dato</dt><dd>{source.type}</dd></div>
         <div><dt>Propósito</dt><dd>{source.purpose}</dd></div>
@@ -23,6 +22,7 @@ export default function SourceDetailDialog({ source, onClose }: { source: Source
         <div><dt>Registros</dt><dd>{source.records}</dd></div>
         <div><dt>Respuesta</dt><dd>{source.response}</dd></div>
       </dl>
+      </div>
     </section>
-  </div>
+  </div>, document.body)
 }

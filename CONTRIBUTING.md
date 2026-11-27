@@ -48,7 +48,7 @@ Each change should:
 
 Expected workflow:
 
-```text
+```text 
 feature/*  ─┐
 fix/*      ─┤
 refactor/* ─┤

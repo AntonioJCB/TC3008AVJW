@@ -23,12 +23,14 @@ export default function AssetDetailDialog({ asset, onClose, live = false }: { as
         <p>{asset.description}</p>
         <dl className="asset-dialog-facts">
           <div><dt>Exposición</dt><dd className={`exposure-${asset.exposure.toLowerCase()}`}>{asset.exposure}</dd></div>
-          <div><dt>Hallazgos</dt><dd>{asset.findings}</dd></div>
+          <div><dt>Hallazgos de riesgo vigentes</dt><dd>{asset.findings}</dd></div>
+          <div><dt>Cobertura</dt><dd>{asset.coverageState ?? 'No registrada'}</dd></div>
           <div><dt>Confianza</dt><dd>{asset.confidence === null ? '—' : `${asset.confidence}%`}</dd></div>
           <div><dt>Última observación</dt><dd>{asset.observed}</dd></div>
         </dl>
-        <h3>Fuentes relacionadas</h3>
-        <div className="asset-dialog-sources">{asset.sources.map((source) => <span key={source}>{source}</span>)}</div>
+        <h3>Fuentes con evidencia en el último análisis</h3>
+        <div className="asset-dialog-sources">{asset.sources.length ? asset.sources.map((source) => <span key={source}>{source}</span>) : <span>Ninguna</span>}</div>
+        {Boolean(asset.historicalSources?.length) && <><h3>Fuentes históricas</h3><div className="asset-dialog-sources">{asset.historicalSources!.map((source) => <span key={source}>{source}</span>)}</div></>}
       </section>
     </div>
   )

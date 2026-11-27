@@ -14,7 +14,7 @@ activos, hallazgos, riesgo y bitácora.
 4. `POST /api/escaneos/{id}/ejecutar` reclama el escaneo y prepara sus fuentes
    en una transacción mediante `iniciar_escaneo`. Mientras esa migración no esté
    aplicada, usa temporalmente el inicio anterior. La respuesta es `202`.
-5. Los adaptadores consultan crt.sh, Shodan, theHarvester y SpiderFoot. Cada
+5. Los adaptadores pasivos consultan crt.sh, Censys, theHarvester y SpiderFoot; Web realiza validación activa opcional. Cada
    resultado se guarda, normaliza y deduplica por separado. Un fallo de una
    fuente no cancela las demás; el escaneo termina `completado`, `incompleto`
    o `fallido`.
@@ -39,8 +39,11 @@ python -m uvicorn app.main:app --reload
 ```
 
 Configura `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` en `backend/.env`.
-La llave de servicio es solo para el servidor. `SHODAN_API_KEY` es opcional;
+La llave de servicio es solo para el servidor. `CENSYS_PAT` es opcional;
 si falta, esa fuente se reporta fallida y el escaneo puede quedar incompleto.
+SpiderFoot usa Google Public DNS
+DoH y urlscan de forma predeterminada; el módulo InternetDB no está en la imagen actual. Web requiere `WEB_ENABLED=true` y consentimiento por análisis;
+solo comprueba el FQDN principal autorizado en 80/443.
 Los demás binarios y tiempos se configuran con las variables documentadas en
 `.env.example`. Define `CORS_ORIGINS` con los orígenes reales al desplegar y
 `FRONTEND_URL` con la dirección pública del frontend para que las invitaciones
@@ -49,8 +52,8 @@ redirijan a `/restablecer-clave`.
 theHarvester y SpiderFoot se instalan y arrancan por separado. En Windows,
 `THEHARVESTER_BIN` debe apuntar a un ejecutable local de Windows; no sirve una
 ruta `/Users/...` de macOS. SpiderFoot debe responder en `SPIDERFOOT_URL` antes
-de iniciar un análisis. Una clave de Shodan puede ser válida y aun así devolver
-403 si su plan no permite las rutas DNS y host. Consulta
+de iniciar un análisis. Un PAT de Censys necesita acceso al lookup de hosts y créditos disponibles;
+no se requiere acceso al buscador avanzado. Consulta
 [`docs/backend/osint.md`](../docs/backend/osint.md) para diagnóstico.
 Para instalar las herramientas en contenedores de desarrollo, sigue
 [`docs/backend/docker-osint.md`](../docs/backend/docker-osint.md).
@@ -94,3 +97,10 @@ Para las rutas de escaneo usa `Authorization: Bearer <access_token>`.
 
 Desde `backend/`, ejecuta `python -m pytest -q`. Las pruebas ordinarias usan
 fuentes y respuestas simuladas; no escriben en Supabase. Las pruebas que escriben en una base real deben ejecutarse solo en un entorno de desarrollo aislado.
+
+## Censys
+
+Censys Platform sustituye a Shodan en escaneos nuevos. Configura `CENSYS_PAT`,
+registra la fuente mediante la migración nueva y revisa el alcance por dominio/IP.
+Consulta [la guía de Censys](../docs/backend/censys.md) para configuración, créditos
+y el comando `python -m app.check_censys --domain TU-DOMINIO.com` sin escrituras.

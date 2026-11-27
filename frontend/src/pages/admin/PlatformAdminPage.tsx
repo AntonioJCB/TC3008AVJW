@@ -7,7 +7,6 @@ import './platform.css'
 
 type Client = { id: string; nombre: string; dominio_principal: string; creado_en: string; integrantes: number }
 type PendingUser = { id: string; nombre: string; correo: string; creado_en: string }
-type Source = { nombre: string; tipo_acceso: string }
 type Rule = { codigo: string; nombre: string; esta_activa: boolean }
 type Section = 'clientes' | 'configuracion'
 
@@ -17,7 +16,6 @@ export default function PlatformAdminPage() {
   const [section, setSection] = useState<Section>('clientes')
   const [clients, setClients] = useState<Client[]>([])
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([])
-  const [sources, setSources] = useState<Source[]>([])
   const [rules, setRules] = useState<Rule[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -26,22 +24,20 @@ export default function PlatformAdminPage() {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
-  useEffect(() => { document.title = 'BaxterSec · Gestión de plataforma' }, [])
+  useEffect(() => { document.title = `BaxterSec · ${section === 'clientes' ? 'Clientes' : 'Configuración general'}` }, [section])
 
   const load = useCallback(async () => {
     if (!supabase) return
-    const [clientResult, pendingResult, sourceResult, ruleResult] = await Promise.all([
+    const [clientResult, pendingResult, ruleResult] = await Promise.all([
       supabase.rpc('listar_clientes'),
       supabase.rpc('listar_usuarios_sin_cliente'),
-      supabase.from('fuentes_osint').select('nombre, tipo_acceso').order('nombre'),
       supabase.from('reglas_riesgo').select('codigo, nombre, esta_activa').order('nombre'),
     ])
-    if (clientResult.error || pendingResult.error || sourceResult.error || ruleResult.error) {
+    if (clientResult.error || pendingResult.error || ruleResult.error) {
       setError('No se pudo cargar la administración. Revisa la conexión y la migración de plataforma.')
     } else {
       setClients((clientResult.data ?? []) as Client[])
       setPendingUsers((pendingResult.data ?? []) as PendingUser[])
-      setSources(sourceResult.data ?? [])
       setRules(ruleResult.data ?? [])
       setError(null)
     }
@@ -126,7 +122,7 @@ export default function PlatformAdminPage() {
     <main className="platform-main">
       <header className="platform-topbar"><span>Administración / {section === 'clientes' ? 'Clientes' : 'Configuración'}</span><span className="platform-secure"><ShieldCheck size={16} /> Acceso protegido</span></header>
       <div className="platform-content">
-        <div className="platform-heading"><div><div className="eyebrow">BAXTERSEC · PANEL INTERNO</div><h1>{section === 'clientes' ? 'Clientes' : 'Configuración general'}</h1><p>{section === 'clientes' ? 'Gestiona las organizaciones que usan la plataforma.' : 'Consulta los catálogos compartidos por la aplicación.'}</p></div>{section === 'clientes' && <button className="platform-primary" type="button" onClick={() => { setShowForm((open) => !open); setError(null) }}><Plus size={17} /> Nuevo cliente</button>}</div>
+        <div className="platform-heading"><div><div className="eyebrow">BAXTERSEC · PANEL INTERNO</div><h1 className="sr-only">{section === 'clientes' ? 'Clientes' : 'Configuración general'}</h1><p>{section === 'clientes' ? 'Gestiona las organizaciones que usan la plataforma.' : 'Consulta los catálogos compartidos por la aplicación.'}</p></div>{section === 'clientes' && <button className="platform-primary" type="button" onClick={() => { setShowForm((open) => !open); setError(null) }}><Plus size={17} /> Nuevo cliente</button>}</div>
         {error && <div className="platform-message platform-error" role="alert">{error}</div>}
         {notice && <div className="platform-message" role="status">{notice}</div>}
         {loading ? <p className="platform-loading" role="status">Cargando datos de plataforma…</p> : section === 'clientes' ? <>
@@ -148,7 +144,6 @@ export default function PlatformAdminPage() {
           <section className="platform-card" aria-labelledby="clients-title"><div className="platform-card-head"><div><h2 id="clients-title">Organizaciones</h2><p>Datos actuales de Supabase</p></div><label className="platform-search"><Search size={16} /><span className="sr-only">Buscar cliente</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar cliente o dominio" /></label></div>
             {filteredClients.length === 0 ? <p className="platform-empty">{clients.length ? 'No hay coincidencias.' : 'Todavía no hay clientes registrados.'}</p> : <div className="platform-table-wrap"><table><thead><tr><th>Cliente</th><th>Dominio</th><th>Integrantes</th><th>Registrado</th></tr></thead><tbody>{filteredClients.map((client) => <tr key={client.id}><td><strong>{client.nombre}</strong></td><td>{client.dominio_principal}</td><td>{client.integrantes}</td><td>{new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium' }).format(new Date(client.creado_en))}</td></tr>)}</tbody></table></div>}</section>
         </> : <div className="platform-config-grid">
-          <section className="platform-card"><div className="platform-card-head"><div><h2>Fuentes OSINT</h2><p>Fuentes registradas en la base de datos</p></div><span className="platform-count">{sources.length}</span></div><ul className="platform-list">{sources.map((source) => <li key={source.nombre}><strong>{source.nombre}</strong><span>{source.tipo_acceso}</span></li>)}</ul></section>
           <section className="platform-card"><div className="platform-card-head"><div><h2>Reglas de riesgo</h2><p>Configuración usada por el motor de evaluación</p></div><span className="platform-count">{rules.filter((rule) => rule.esta_activa).length} activas</span></div><ul className="platform-list">{rules.map((rule) => <li key={rule.codigo}><strong>{rule.nombre}</strong><span>{rule.esta_activa ? 'Activa' : 'Inactiva'}</span></li>)}</ul></section>
         </div>}
       </div>
